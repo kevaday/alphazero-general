@@ -34,7 +34,7 @@ In order to increase performance, you can save your game engine files which may 
 ### Description some of hyperparameters:
 `workers`: Number of processes used for self play, Arena comparison, and training the model.
 
-`process_batch_size`: The size of the batches used for batching MCTS during self play. Equivalent to the number of games that should be played at the same time.
+`process_batch_size`: The size of the batches used for batching MCTS during self play. Equivalent to the number of games that should be played at the same time. In each worker. For exmaple, a batch size of 128 with 4 workers would create 128\*4 = 512 games to be played at the same time in batches.
 
 `numItersForTrainExamplesHistory`: The number of past iterations to load self play training data from.
 
