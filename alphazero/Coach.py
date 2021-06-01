@@ -22,31 +22,32 @@ DEFAULT_ARGS = dotdict({
     'workers': mp.cpu_count(),
     'startIter': 0,
     'numIters': 1000,
-    'process_batch_size': 128,
+    'process_batch_size': 64,
     'train_batch_size': 512,
     'arena_batch_size': 32,
-    'train_steps_per_iteration': 512,
+    'train_steps_per_iteration': 256,
     # should preferably be a multiple of process_batch_size and workers
-    'gamesPerIteration': 512,
+    'gamesPerIteration': 256,
     'numItersForTrainExamplesHistory': 10,
     'max_moves': 128,
     'num_stacked_observations': 8,
-    'numWarmupIters': 1,  # Iterations where games are played randomly, 0 for none
+    'numWarmupIters': 2,  # Iterations where games are played randomly, 0 for none
     'skipSelfPlayIters': 0,
     'symmetricSamples': True,
-    'numMCTSSims': 50,
+    'numMCTSSims': 100,
     'numFastSims': 15,
     'numWarmupSims': 10,
     'probFastSim': 0.75,
     'tempThreshold': 32,
     'temp': 1,
-    'compareWithRandom': True,
-    'arenaCompareRandom': 16,
+    'compareWithTester': True,
+    'compareTester': RandomPlayer,
+    'arenaCompareTester': 16,
     'arenaCompare': 32*4,
     'arenaTemp': 0.1,
     'arenaMCTS': True,
     'arenaBatched': True,
-    'randomCompareFreq': 1,
+    'testCompareFreq': 1,
     'compareWithPast': True,
     'pastCompareFreq': 1,
     'model_gating': True,
@@ -58,25 +59,27 @@ DEFAULT_ARGS = dotdict({
         'iterations': 35
     }),
     'load_model': True,
-    'cpuct': 1.25,
-    'checkpoint': 'checkpoint/hnefatafl_run2',
-    'data': 'data/hnefatafl_run2',
+    'cpuct': 2,
+    'checkpoint': 'checkpoint',
+    'data': 'data',
 
-    'lr': 0.01,
-    'num_channels': 128,
-    'depth': 16,
-    'value_head_channels': 2,
-    'policy_head_channels': 8,
+    'lr': 0.005,
+    'num_channels': 64,
+    'depth': 8,
+    'value_head_channels': 1,
+    'policy_head_channels': 2,
     'value_dense_layers': [64],
-    'policy_dense_layers': [1024]
+    'policy_dense_layers': [256, 256]
 })
 
 
-def get_args(**kwargs):
-    args = DEFAULT_ARGS
+def get_args(args=None, **kwargs):
+    new_args = DEFAULT_ARGS
+    if args:
+        new_args.update(args)
     for key, value in kwargs.items():
-        setattr(args, key, value)
-    return args
+        setattr(new_args, key, value)
+    return new_args
 
 
 class Coach:
@@ -88,15 +91,15 @@ class Coach:
         self.args = args
 
         if self.args.load_model:
-            networks = sorted(glob(self.args.checkpoint + '/*'))
+            networks = sorted(glob(self.args.checkpoint + '/' + self.args.run_name + '/*'))
             self.args.startIter = len(networks)
             if self.args.startIter == 0:
                 self.nnet.save_checkpoint(
-                    folder=self.args.checkpoint, filename=get_iter_file(0))
+                    folder=self.args.checkpoint + '/' + self.args.run_name, filename=get_iter_file(0))
                 self.args.startIter = 1
 
             self.nnet.load_checkpoint(
-                folder=self.args.checkpoint, filename=get_iter_file(self.args.startIter - 1))
+                folder=self.args.checkpoint + '/' + self.args.run_name, filename=get_iter_file(self.args.startIter - 1))
 
         self.current_iter = self.args.startIter
         self.gating_counter = 0
@@ -138,7 +141,7 @@ class Coach:
                 self.killSelfPlayAgents()
             self.train(i)
 
-            if not self.warmup and self.args.compareWithRandom and (const_i - 1) % self.args.randomCompareFreq == 0:
+            if not self.warmup and self.args.compareWithTester and (const_i - 1) % self.args.testCompareFreq == 0:
                 if const_i == 1:
                     print(
                         'Note: Comparisons with Random do not use monte carlo tree search.'
@@ -243,7 +246,9 @@ class Coach:
 
         os.makedirs(self.args.data, exist_ok=True)
 
-        filename = self.args.data + '/' + get_iter_file(iteration).replace('.pkl', '')
+        folder = self.args.data + '/' + self.args.run_name
+        filename = folder + '/' + get_iter_file(iteration).replace('.pkl', '')
+        if not os.path.exists(folder): os.mkdir(folder)
         torch.save(data_tensor, filename + '-data.pkl')
         torch.save(policy_tensor, filename + '-policy.pkl')
         torch.save(value_tensor, filename + '-value.pkl')
@@ -267,7 +272,7 @@ class Coach:
             self.args.numItersForTrainExamplesHistory
         )
         for i in range(max(1, iteration - currentHistorySize), iteration + 1):
-            filename = self.args.data + '/' + get_iter_file(i).replace('.pkl', '')
+            filename = self.args.data + '/' + self.args.run_name + '/' + get_iter_file(i).replace('.pkl', '')
             data_tensor = torch.load(filename + '-data.pkl')
             policy_tensor = torch.load(filename + '-policy.pkl')
             value_tensor = torch.load(filename + '-value.pkl')
@@ -284,7 +289,7 @@ class Coach:
         self.writer.add_scalar('loss/value', l_v, iteration)
         self.writer.add_scalar('loss/total', l_pi + l_v, iteration)
 
-        self.nnet.save_checkpoint(folder=self.args.checkpoint, filename=get_iter_file(iteration))
+        self.nnet.save_checkpoint(folder=self.args.checkpoint + '/' + self.args.run_name, filename=get_iter_file(iteration))
 
         del dataloader
         del dataset
@@ -292,7 +297,7 @@ class Coach:
 
     def compareToPast(self, iteration):
         past = max(0, iteration - self.args.pastCompareFreq)
-        self.pnet.load_checkpoint(folder=self.args.checkpoint, filename=get_iter_file(past))
+        self.pnet.load_checkpoint(folder=self.args.checkpoint + '/' + self.args.run_name, filename=get_iter_file(past))
 
         print(f'PITTING AGAINST ITERATION {past}')
         if self.args.arenaBatched:
@@ -328,15 +333,15 @@ class Coach:
             and self.gating_counter <= self.args.max_gating_iters
         ):
             print(f'Staying on model version {past}')
-            self.nnet.load_checkpoint(folder=self.args.checkpoint, filename=get_iter_file(past))
-            os.remove(os.path.join(self.args.checkpoint, get_iter_file(iteration)))
+            self.nnet.load_checkpoint(folder=self.args.checkpoint + '/' + self.args.run_name, filename=get_iter_file(past))
+            os.remove(os.path.join(self.args.checkpoint + '/' + self.args.run_name, get_iter_file(iteration)))
             self.current_iter = past
             self.gating_counter += 1
         else:
             self.gating_counter = 0
 
     def compareToRandom(self, iteration):
-        rplayer = RandomPlayer(self.game).play
+        test_player = self.args.compareTester(self.game).play
 
         cls = MCTSPlayer if self.args.arenaMCTS else NNPlayer
         new_player = cls(self.game, self.nnet, args=self.args)
@@ -345,9 +350,9 @@ class Coach:
         print('PITTING AGAINST RANDOM')
 
         players = [nnplayer]
-        players.extend([rplayer] * (len(self.game.getPlayers()) - 1))
+        players.extend([test_player] * (len(self.game.getPlayers()) - 1))
         arena = Arena(players, self.game, use_batched_mcts=False, args=self.args)
-        wins, draws, winrates = arena.play_games(self.args.arenaCompareRandom)
+        wins, draws, winrates = arena.play_games(self.args.arenaCompareTester)
         winrate = winrates[0]
 
         print(f'NEW/RANDOM WINS : {wins[0]} / {sum(wins[1:])} ; DRAWS : {draws}\n')

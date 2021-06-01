@@ -7,7 +7,7 @@ class HumanTaflPlayer:
         self.game = game
 
     def play(self, board: Board, turn):
-        valid_moves = self.game.getValidMoves(board, 1)
+        valid_moves = self.game.getValidMoves(board, self.game.getPlayers()[0])
 
         def string_to_action(player_inp: str) -> int:
             try:
@@ -23,3 +23,23 @@ class HumanTaflPlayer:
                                             f"in valids: {bool(valid_moves[action])}). Enter a valid move: "))
 
         return action
+
+
+class GreedyTaflPlayer:
+    def __init__(self, game: TaflGame):
+        self.game = game
+
+    def play(self, board: Board, turn):
+        player = self.game.getPlayers()[0]
+        valids = self.game.getValidMoves(board, player)
+        candidates = []
+
+        for a in range(self.game.getActionSize()):
+            if valids[a] == 0: continue
+
+            next_board, _ = self.game.getNextState(board, player, a)
+            score = self.game.getScore(next_board, player)
+            candidates.append((-score, a))
+
+        candidates.sort()
+        return candidates[0][1]

@@ -37,11 +37,14 @@ class Connect4Game(Game):
     def getPlayers(self):
         return list(range(NUM_PLAYERS))
 
+    def _player_range(self, player):
+        return 1 if player == self.getPlayers()[0] else -1
+
     def getNextState(self, board, player, action):
         """Returns a copy of the board with updated move, original board is unmodified."""
         b = Board(self.height, self.width, self.win_length)
         b.pieces = np.copy(board)
-        b.add_stone(action, player)
+        b.add_stone(action, self._player_range(player))
         return np.asarray(b.pieces), self.getNextPlayer(player)
 
     def getValidMoves(self, board, player):
@@ -51,6 +54,7 @@ class Connect4Game(Game):
         return np.asarray(b.get_valid_moves())
 
     def getGameEnded(self, board, player):
+        player = self._player_range(player)
         b = Board(self.height, self.width, self.win_length)
         b.pieces = np.copy(board)
         is_ended, winner = b.get_win_state()
@@ -70,11 +74,11 @@ class Connect4Game(Game):
 
     def getCanonicalForm(self, board, player):
         # Flip player from 1 to -1
-        return board * (1 if player == self.getPlayers()[0] else -1)
+        return board * self._player_range(player)
 
     def getSymmetries(self, board, pi):
         """Board is left/right board symmetric"""
-        return [(board, pi), (board[:, ::-1], pi)]
+        return [(board, pi), (board[:, ::-1], pi[::-1])]
 
     def stringRepresentation(self, board):
         return board.tostring()

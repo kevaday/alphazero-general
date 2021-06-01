@@ -2,7 +2,7 @@
 
 # import sys
 # sys.path.extend(['..', '../..'])
-# import pyximport; pyximport.install()
+import pyximport; pyximport.install()
 
 from alphazero.Game import Game
 from hnefatafl.engine import Board, Move, PieceType
@@ -240,12 +240,19 @@ class TaflGame(Game):
                     new_action = get_action(new_b, move)
                     new_pi[new_action] = prob
 
-                syms += [(new_b, np.array(new_pi, dtype=np.float32))]
+                syms.append((new_b, np.array(new_pi, dtype=np.float32)))
 
         return syms
 
     def stringRepresentation(self, board: CustomBoard):
         return board.to_string() + str(board.current_player) + str(board.num_turns)
+
+    def getScore(self, board: CustomBoard, player: int) -> int:
+        result = self.getGameEnded(board, player)
+        player = (1 if player == self.getPlayers()[0] else -1)
+        white_pieces = len(list(filter(lambda p: p.is_white, board.pieces)))
+        black_pieces = len(list(filter(lambda p: p.is_black, board.pieces)))
+        return player * (1000 * result + black_pieces - white_pieces)
 
 
 if __name__ == '__main__':
@@ -257,7 +264,7 @@ if __name__ == '__main__':
     state = g.getInitBoard()
     player = g.getPlayers()[0]
     for _ in range(32):
-        import pdb; pdb.set_trace()
         state = g.getCanonicalForm(state, player)
         valids = g.getValidMoves(state, 0)
         state, player = g.getNextState(state, 0, random.choice([a for a, v in enumerate(valids) if v == 1]))
+    import pdb;pdb.set_trace()

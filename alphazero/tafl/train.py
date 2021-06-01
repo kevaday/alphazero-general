@@ -31,13 +31,13 @@ args = dotdict({
     'probFastSim': 0.75,
     'tempThreshold': 10,
     'temp': 1,
-    'compareWithRandom': True,
-    'arenaCompareRandom': 16,
+    'compareWithTester': True,
+    'arenaCompareTester': 16,
     'arenaCompare': 32*4,
     'arenaTemp': 0.25,
     'arenaMCTS': True,
     'arenaBatched': True,
-    'randomCompareFreq': 1,
+    'testCompareFreq': 1,
     'compareWithPast': True,
     'pastCompareFreq': 1,
     'model_gating': True,
@@ -60,13 +60,19 @@ args = dotdict({
 
 
 args = get_args(
-        run_name='brandubh_big_network',
-        checkpoint='checkpoint/brandubh_big_network',
-        data='data/brandubh_big_network',
-        max_moves=DRAW_MOVE_COUNT,
-        num_stacked_observations=NUM_STACKED_OBSERVATIONS,
-        cpuct=3
-    )
+    run_name='brandubh_big_network',
+    max_moves=DRAW_MOVE_COUNT,
+    num_stacked_observations=NUM_STACKED_OBSERVATIONS,
+    cpuct=3,
+    pastCompareFreq=3,
+    lr=0.005,
+    num_channels=128,
+    depth=16,
+    value_head_channels=2,
+    policy_head_channels=8,
+    value_dense_layers=[128, 64],
+    policy_dense_layers=[1024]
+)
 
 
 if __name__ == "__main__":

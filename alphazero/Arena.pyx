@@ -241,10 +241,10 @@ class Arena:
                     self.game,
                     get_index=lambda p, i: agents[i].player_to_index[p]
                 )
-                self.__update_winrates(size)
                 for i, w in enumerate(wins):
                     self.players[i].wins += w
                 self.draws += draws
+                self.__update_winrates(sum([player.wins for player in self.players]) + self.draws)
 
                 bar.suffix = '({eps}/{maxeps}) Winrates: {wr} | Eps Time: {et:.3f}s | Total: {total:} | ETA: {eta:}' \
                     .format(

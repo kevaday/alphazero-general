@@ -101,7 +101,7 @@ class SelfPlayAgent(mp.Process):
         for i in range(self.batch_size):
             if self._is_warmup:
                 board = self.mcts[i].findLeafToProcess(self.canonical[i], True)
-                if board:
+                if board is not None:
                     policy = self.game.getValidMoves(board, self.game.getPlayers()[0])
                     policy = policy / np.sum(policy)
                     self.policy_tensor[i] = torch.from_numpy(policy)
