@@ -1,9 +1,8 @@
 # AlphaZero General
 This is an implementation of AlphaZero based on the following repositories:
 
-The original repo: https://github.com/suragnair/alpha-zero-general
-
-A fork of the original repo: https://github.com/bhansconnect/fast-alphazero-general
+* The original repo: https://github.com/suragnair/alpha-zero-general
+* A fork of the original repo: https://github.com/bhansconnect/fast-alphazero-general
 
 This project is still work-in-progress, so expect frequent fixes, updates, and much more detailed documentation soon.
 
