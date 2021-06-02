@@ -126,7 +126,7 @@ class NNetWrapper(NeuralNet):
     def save_checkpoint(self, folder='checkpoint', filename='checkpoint.pth.tar'):
         filepath = os.path.join(folder, filename)
         if not os.path.exists(folder):
-            os.mkdirs(folder)
+            os.makedirs(folder)
         torch.save({
             'state_dict': self.nnet.state_dict(),
             'opt_state': self.optimizer.state_dict(),
