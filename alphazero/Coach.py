@@ -244,11 +244,9 @@ class Coach:
             policy_tensor[i] = torch.tensor(policy)
             value_tensor[i, 0] = value
 
-        os.makedirs(self.args.data, exist_ok=True)
-
         folder = self.args.data + '/' + self.args.run_name
         filename = folder + '/' + get_iter_file(iteration).replace('.pkl', '')
-        if not os.path.exists(folder): os.mkdir(folder)
+        if not os.path.exists(folder): os.makedirs(folder)
         torch.save(data_tensor, filename + '-data.pkl')
         torch.save(policy_tensor, filename + '-policy.pkl')
         torch.save(value_tensor, filename + '-value.pkl')
