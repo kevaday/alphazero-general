@@ -347,7 +347,7 @@ class Coach:
         new_player = cls(self.game, self.nnet, args=self.args)
         nnplayer = new_player.play
 
-        print('PITTING AGAINST RANDOM')
+        print('PITTING AGAINST TESTER: ' + self.args.compareTester.__class__.__name__)
 
         players = [nnplayer]
         players.extend([test_player] * (len(self.game.getPlayers()) - 1))
@@ -355,5 +355,5 @@ class Coach:
         wins, draws, winrates = arena.play_games(self.args.arenaCompareTester)
         winrate = winrates[0]
 
-        print(f'NEW/RANDOM WINS : {wins[0]} / {sum(wins[1:])} ; DRAWS : {draws}\n')
-        self.writer.add_scalar('win_rate/random', winrate, iteration)
+        print(f'NEW/TESTER WINS : {wins[0]} / {sum(wins[1:])} ; DRAWS : {draws}\n')
+        self.writer.add_scalar('win_rate/tester', winrate, iteration)

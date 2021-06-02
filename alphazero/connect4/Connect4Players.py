@@ -22,22 +22,23 @@ class HumanConnect4Player():
 class OneStepLookaheadConnect4Player():
     """Simple player who always takes a win if presented, or blocks a loss if obvious, otherwise is random."""
 
-    def __init__(self, game, verbose=True):
+    def __init__(self, game, verbose=False):
         self.game = game
-        self.player_num = 1
         self.verbose = verbose
 
     def play(self, board, turn):
-        valid_moves = self.game.getValidMoves(board, self.player_num)
+        valid_moves = self.game.getValidMoves(board, 0)
         win_move_set = set()
         fallback_move_set = set()
         stop_loss_move_set = set()
         for move, valid in enumerate(valid_moves):
             if not valid:
                 continue
-            if self.player_num == self.game.getGameEnded(*self.game.getNextState(board, self.player_num, move)):
+            state, _ = self.game.getNextState(board, 0, move)
+            result = self.game.getGameEnded(state, 0)
+            if result == -1:
                 win_move_set.add(move)
-            if -self.player_num == self.game.getGameEnded(*self.game.getNextState(board, -self.player_num, move)):
+            elif result == 1:
                 stop_loss_move_set.add(move)
             else:
                 fallback_move_set.add(move)
@@ -59,6 +60,6 @@ class OneStepLookaheadConnect4Player():
                       (ret_move, fallback_move_set))
         else:
             raise Exception('No valid moves remaining: %s' %
-                            game.stringRepresentation(board))
+                            self.game.stringRepresentation(board))
 
         return ret_move

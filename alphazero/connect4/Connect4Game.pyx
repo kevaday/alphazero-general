@@ -37,6 +37,9 @@ class Connect4Game(Game):
     def getPlayers(self):
         return list(range(NUM_PLAYERS))
 
+    def getPlayerToPlay(self, board) -> int:
+        return np.count_nonzero(board.pieces)
+
     def _player_range(self, player):
         return 1 if player == self.getPlayers()[0] else -1
 
