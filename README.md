@@ -7,10 +7,10 @@ This is an implementation of AlphaZero based on the following repositories:
 This project is still work-in-progress, so expect frequent fixes, updates, and much more detailed documentation soon.
 
 ### Current differences from the above repos:
-1. Model Gating: after each iteration, the model is compared to the previous iteration. The model that performs better continues forward based on an adjustable parameter.
-2. Batched MCTS: bhandsconnect's repo already includes this for self play, but it has been expanded upon to be included in Arena for faster comparison of models.
-3. Multiplayer Support: Any number of players are supported! This allows for training on a greater variety of games such as many types of card games or something like Catan.
-4. Warmup Iterations: A few self play iterations in the beginning of training are performed using random policy and value to speed up initial generation of training data instead of using the model as it would be random anyways.
+1. **Model Gating**: after each iteration, the model is compared to the previous iteration. The model that performs better continues forward based on an adjustable parameter.
+2. **Batched MCTS**: bhandsconnect's repo already includes this for self play, but it has been expanded upon to be included in Arena for faster comparison of models.
+3. **Multiplayer Support**: Any number of players are supported! This allows for training on a greater variety of games such as many types of card games or something like Catan.
+4. **Warmup Iterations**: A few self play iterations in the beginning of training are performed using random policy and value to speed up initial generation of training data instead of using the model as it would be random anyways.
 5. Generally cleaner, more functional and universal code so far.
 
 ## Getting Started
