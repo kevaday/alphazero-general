@@ -1,9 +1,11 @@
 # AlphaZero General
 This is an implementation of AlphaZero based on the following repositories:
+
 The original repo: https://github.com/suragnair/alpha-zero-general
+
 A fork of the original repo: https://github.com/bhansconnect/fast-alphazero-general
 
-This repo is still work-in-progress, so expect frequent updates and much more detailed documentation soon.
+This project is still work-in-progress, so expect frequent fixes, updates, and much more detailed documentation soon.
 
 ### Current differences from the above repos:
 1. Model Gating: after each iteration, the model is compared to the previous iteration. The model that performs better continues forward based on an adjustable parameter.
