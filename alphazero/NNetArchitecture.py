@@ -83,7 +83,8 @@ class NNetArchitecture(nn.Module):
         self.v_fc = mlp(
             self.board_x*self.board_y*args.value_head_channels,
             args.value_dense_layers,
-            1
+            1,
+            activation=nn.Identity
         )
 
         self.pi_conv = conv1x1(args.num_channels, args.policy_head_channels)
@@ -91,7 +92,8 @@ class NNetArchitecture(nn.Module):
         self.pi_fc = mlp(
             self.board_x*self.board_y*args.policy_head_channels,
             self.args.policy_dense_layers,
-            self.action_size
+            self.action_size,
+            activation=nn.Identity
         )
 
     def forward(self, s):

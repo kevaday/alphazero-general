@@ -60,17 +60,22 @@ args = dotdict({
 
 
 args = get_args(
-    run_name='brandubh_big_network',
+    run_name='brandubh',
     max_moves=DRAW_MOVE_COUNT,
     num_stacked_observations=NUM_STACKED_OBSERVATIONS,
     cpuct=3,
+    numWarmupIters=1,
     pastCompareFreq=3,
-    lr=0.005,
+    process_batch_size=512,
+    train_batch_size=1024,
+    train_steps_per_iteration=800,
+    gamesPerIteration=2048,
+    lr=0.01,
     num_channels=128,
     depth=16,
     value_head_channels=2,
-    policy_head_channels=8,
-    value_dense_layers=[128, 64],
+    policy_head_channels=4,
+    value_dense_layers=[128, 128],
     policy_dense_layers=[1024]
 )
 
