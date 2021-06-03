@@ -205,7 +205,7 @@ class TaflGame(Game):
         syms = [None] * 8
 
         for i in range(1, 5):
-            for flip in [True, False]:
+            for flip in (False, True):
                 state = np.rot90(np.array(board._board), i)
                 if flip:
                     state = np.fliplr(state)
@@ -245,7 +245,7 @@ class TaflGame(Game):
                     new_action = get_action(new_b, move)
                     new_pi[new_action] = prob
 
-                syms[i+bool(flip)] = (new_b, np.array(new_pi, dtype=np.float32))
+                syms[(i-1)*2 + int(flip)] = (new_b, np.array(new_pi, dtype=np.float32))
 
         return syms
 

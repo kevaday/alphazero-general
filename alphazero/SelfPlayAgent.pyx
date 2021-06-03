@@ -152,7 +152,8 @@ class SelfPlayAgent(mp.Process):
             self.batch_ready.wait()
             self.batch_ready.clear()
         for i in range(self.batch_size):
-            self.mcts[self._index_to_batch(i)].processResults(
+            index = self._index_to_batch(i) if self._is_arena else i
+            self.mcts[index].processResults(
                 self.policy_tensor[i].data.numpy(), self.value_tensor[i][0]
             )
 
@@ -168,7 +169,7 @@ class SelfPlayAgent(mp.Process):
                     self.mcts[i].getExpertValue(self.canonical[i]),
                     self.player[i]
                 ))
-            self.games[i], self.player[i] = self.game.getNextState(self.games[i], self.player[i], action, copy=True)
+            self.games[i], self.player[i] = self.game.getNextState(self.games[i], self.player[i], action, copy=False)
             self.turn[i] += 1
             result = self.game.getGameEnded(self.games[i], 0)
             if result != 0:
@@ -182,6 +183,7 @@ class SelfPlayAgent(mp.Process):
                         for hist in self.histories[i]:
                             if self.args.symmetricSamples:
                                 sym = self.game.getSymmetries(hist[0], hist[1])
+                                print(sym)
                                 for b, p in sym:
                                     self.output_queue.put((b.astype(np.float32), p,
                                                            result *

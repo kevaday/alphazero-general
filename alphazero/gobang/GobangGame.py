@@ -30,10 +30,10 @@ class GobangGame(Game):
     def getPlayers(self):
         return list(range(NUM_PLAYERS))
 
-    def getNextState(self, board, player, action):
+    def getNextState(self, board, player, action, copy=True):
         # if player takes action on board, return next (board,player)
         b = Board(self.n)
-        b.pieces = np.copy(board)
+        b.pieces = np.copy(board) if copy else board
 
         # action must be a valid move
         if action == self.n * self.n + 1:
@@ -84,7 +84,7 @@ class GobangGame(Game):
             return 0
         return 1e-4
 
-    def getCanonicalForm(self, board, player):
+    def getCanonicalForm(self, board, player, copy=True):
         # return state if player==0, else return -state if player==1
         return board * (1 if player == self.getPlayers()[0] else -1)
 
