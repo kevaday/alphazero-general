@@ -183,7 +183,6 @@ class SelfPlayAgent(mp.Process):
                         for hist in self.histories[i]:
                             if self.args.symmetricSamples:
                                 sym = self.game.getSymmetries(hist[0], hist[1])
-                                print(sym)
                                 for b, p in sym:
                                     self.output_queue.put((b.astype(np.float32), p,
                                                            result *
