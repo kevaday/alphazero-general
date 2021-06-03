@@ -27,7 +27,7 @@ DEFAULT_ARGS = dotdict({
     'arena_batch_size': 32,
     'train_steps_per_iteration': 256,
     # should preferably be a multiple of process_batch_size and workers
-    'gamesPerIteration': 256,
+    'gamesPerIteration': 64*mp.cpu_count(),
     'numItersForTrainExamplesHistory': 10,
     'max_moves': 128,
     'num_stacked_observations': 8,

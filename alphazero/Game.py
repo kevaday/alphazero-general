@@ -95,12 +95,13 @@ class Game(ABC):
         pass
 
     @abstractmethod
-    def getNextState(self, board, player: int, action: int) -> Tuple[Any, int]:
+    def getNextState(self, board, player: int, action: int, copy=True) -> Tuple[Any, int]:
         """
         Input:
             board: current board
             player: current player (from the range given by getPlayers method)
             action: action taken by current player
+            copy: whether or not to create a new copy of `board` for performance optimization.
 
         Returns:
             nextBoard: board after applying action
@@ -137,11 +138,12 @@ class Game(ABC):
         pass
 
     @abstractmethod
-    def getCanonicalForm(self, board, player: int):
+    def getCanonicalForm(self, board, player: int, copy=True):
         """
         Input:
             board: current board
             player: current player (1 or -1)
+            copy: whether or not to create a new copy of `board` for performance optimization.
 
         Returns:
             canonicalBoard: returns canonical form of board. The canonical form

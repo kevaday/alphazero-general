@@ -196,7 +196,7 @@ class MCTS():
 
         a = best_act
         next_s, next_player = self.game.getNextState(canonicalBoard, 0, a)
-        next_s = self.game.getCanonicalForm(next_s, next_player)
+        next_s = self.game.getCanonicalForm(next_s, next_player, copy=False)
         self.path.append((s, a))
         return self.findLeafToProcess(next_s, False)
 
@@ -269,7 +269,7 @@ class MCTS():
 
         a = best_act
         next_s, next_player = self.game.getNextState(canonicalBoard, 0, a)
-        next_s = self.game.getCanonicalForm(next_s, next_player)
+        next_s = self.game.getCanonicalForm(next_s, next_player, copy=False)
 
         v = self.search(next_s)
 

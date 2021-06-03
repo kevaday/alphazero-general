@@ -74,12 +74,12 @@ args = get_args(
     train_steps_per_iteration=800,
     gamesPerIteration=2048,
     lr=0.01,
-    num_channels=128,
-    depth=16,
-    value_head_channels=2,
-    policy_head_channels=4,
-    value_dense_layers=[128, 128],
-    policy_dense_layers=[1024]
+    num_channels=64,
+    depth=6,
+    value_head_channels=1,
+    policy_head_channels=2,
+    value_dense_layers=[24],
+    policy_dense_layers=[588]
 )
 
 

@@ -121,6 +121,10 @@ class TaflGame(Game):
             board=game_variant,
             _store_past_states=True
         )
+        self.board_size = (self.board.width, self.board.height)
+        self.action_size = self.board.width * self.board.height * (self.board.width + self.board.height - 2)
+        self.players = list(range(NUM_PLAYERS))
+        self.obs_size = (NUM_CHANNELS, *self.board_size)
 
     @staticmethod
     def _get_piece_type(player: int) -> PieceType:
@@ -134,23 +138,23 @@ class TaflGame(Game):
         return self.board.copy()
 
     def getBoardSize(self):
-        return self.board.width, self.board.height
+        return self.board_size
 
     def getActionSize(self) -> int:
-        return self.board.width * self.board.height * (self.board.width + self.board.height - 2)
+        return self.action_size
 
     def getPlayers(self) -> List[int]:
-        return list(range(NUM_PLAYERS))
+        return self.players
 
     def getPlayerToPlay(self, board: CustomBoard) -> int:
         return 2 - board.to_play().value
 
     def getObservationSize(self) -> tuple:
         # channels x width x height
-        return NUM_CHANNELS, self.board.width, self.board.height
+        return self.obs_size
 
-    def getNextState(self, board: CustomBoard, player: int, action: int):
-        b = board.copy()
+    def getNextState(self, board: CustomBoard, player: int, action: int, copy=True):
+        b = board.copy() if copy else board
         move = get_move(b, action)
         try:
             b.move(move, _check_game_end=False, _check_valid=False)
@@ -190,15 +194,15 @@ class TaflGame(Game):
         
         return reward
 
-    def getCanonicalForm(self, board: CustomBoard, player: int):
-        b = board.copy()
+    def getCanonicalForm(self, board: CustomBoard, player: int, copy=True):
+        b = board.copy() if copy else board
         b.current_player = self.getNextPlayer(b.current_player, player)
         return b
 
     def getSymmetries(self, board: CustomBoard, pi: np.ndarray) -> List[Tuple[CustomBoard, np.ndarray]]:
         action_size = self.getActionSize()
         assert (len(pi) == action_size)
-        syms = []
+        syms = [None] * 8
 
         for i in range(1, 5):
             for flip in [True, False]:
@@ -206,13 +210,14 @@ class TaflGame(Game):
                 if flip:
                     state = np.fliplr(state)
 
-                past_states = []
-                for idx in range(min(self.board.num_stacked_obs, len(board._past_states))):
+                num_past_states = min(self.board.num_stacked_obs, len(board._past_states))
+                past_states = [None] * num_past_states
+                for idx in range(num_past_states):
                     past = board._past_states[idx]
                     b = np.rot90(np.array(past[0]._board), i)
                     if flip:
                         b = np.fliplr(b)
-                    past_states.append((board.copy(store_past_states=False, state=b.tolist()), past[1]))
+                    past_states[idx] = (board.copy(store_past_states=False, state=b.tolist()), past[1])
 
                 new_b = board.copy(store_past_states=True, state=state.tolist(), past_states=past_states)
 
@@ -240,7 +245,7 @@ class TaflGame(Game):
                     new_action = get_action(new_b, move)
                     new_pi[new_action] = prob
 
-                syms.append((new_b, np.array(new_pi, dtype=np.float32)))
+                syms[i+bool(flip)] = (new_b, np.array(new_pi, dtype=np.float32))
 
         return syms
 

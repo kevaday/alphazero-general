@@ -21,7 +21,7 @@ def get_game_results(result_queue, game, get_index=None):
             wins[index] += 1
         elif result == -1:
             for p in game.getPlayers():
-                b = game.getCanonicalForm(board, p)
+                b = game.getCanonicalForm(board, p, copy=False)
                 if game.getGameEnded(b, game.getPlayers()[0]) == 1:
                     index = get_index(player, agent_id) if get_index else player
                     wins[index] += 1
@@ -63,7 +63,9 @@ class SelfPlayAgent(mp.Process):
         self._is_arena = _is_arena
         self._is_warmup = _is_warmup
         if _is_arena:
-            self.player_to_index = {i: p for i, p in enumerate(_player_order)}
+            self.player_to_index = _player_order
+            self.batch_indices = None
+            self.data_lens = None
 
         self.fast = False
         for _ in range(self.batch_size):
@@ -93,10 +95,18 @@ class SelfPlayAgent(mp.Process):
                 self.output_queue.join_thread()
         except Exception:
             print(traceback.format_exc())
+    
+    def _index_to_batch(self, index):
+        for player in self.game.getPlayers():
+            if index < self.data_lens[player]:
+                break
+        return self.batch_indices[player][index]
 
     def generateBatch(self):
         if self._is_arena:
             batch_tensor = [[] for _ in self.game.getPlayers()]
+            self.batch_indices = [[] for _ in self.game.getPlayers()]
+            self.data_lens = []
 
         for i in range(self.batch_size):
             if self._is_warmup:
@@ -118,14 +128,18 @@ class SelfPlayAgent(mp.Process):
                     player = self.player_to_index[self.game.getPlayerToPlay(board)]
                     data = torch.unsqueeze(data, 0)
                     batch_tensor[player].append(data)
+                    self.batch_indices[player].append(i)
                 else:
                     self.batch_tensor[i].copy_(data)
             elif self._is_arena:
                 batch_tensor[0].append(torch.zeros(1, *self.game.getObservationSize()))
+                self.batch_indices[0].append(i)
 
         if self._is_arena:
             for player in self.game.getPlayers():
+                player = self.player_to_index[player]
                 data = batch_tensor[player]
+                self.data_lens.append(len(data))
                 if data:
                     batch_tensor[player] = torch.cat(data)
             self.output_queue.put(batch_tensor)
@@ -138,7 +152,7 @@ class SelfPlayAgent(mp.Process):
             self.batch_ready.wait()
             self.batch_ready.clear()
         for i in range(self.batch_size):
-            self.mcts[i].processResults(
+            self.mcts[self._index_to_batch(i)].processResults(
                 self.policy_tensor[i].data.numpy(), self.value_tensor[i][0]
             )
 
@@ -154,7 +168,7 @@ class SelfPlayAgent(mp.Process):
                     self.mcts[i].getExpertValue(self.canonical[i]),
                     self.player[i]
                 ))
-            self.games[i], self.player[i] = self.game.getNextState(self.games[i], self.player[i], action)
+            self.games[i], self.player[i] = self.game.getNextState(self.games[i], self.player[i], action, copy=True)
             self.turn[i] += 1
             result = self.game.getGameEnded(self.games[i], 0)
             if result != 0:
@@ -169,13 +183,13 @@ class SelfPlayAgent(mp.Process):
                             if self.args.symmetricSamples:
                                 sym = self.game.getSymmetries(hist[0], hist[1])
                                 for b, p in sym:
-                                    self.output_queue.put((b, p,
+                                    self.output_queue.put((b.astype(np.float32), p,
                                                            result *
                                                            hist[3] *
                                                            (1 - self.args.expertValueWeight.current)
                                                            + self.args.expertValueWeight.current * hist[2]))
                             else:
-                                self.output_queue.put((hist[0], hist[1],
+                                self.output_queue.put((hist[0].astype(np.float32), hist[1],
                                                        result *
                                                        hist[3] *
                                                        (1 - self.args.expertValueWeight.current)
@@ -191,4 +205,5 @@ class SelfPlayAgent(mp.Process):
     def generateCanonical(self):
         for i in range(self.batch_size):
             self.canonical[i] = self.game.getCanonicalForm(
-                self.games[i], self.player[i])
+                self.games[i], self.player[i]
+            )
