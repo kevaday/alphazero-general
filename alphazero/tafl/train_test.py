@@ -70,16 +70,17 @@ args = get_args(
     pastCompareFreq=3,
     compareTester=GreedyTaflPlayer,
     process_batch_size=512,
-    train_batch_size=1024,
-    train_steps_per_iteration=800,
+    train_batch_size=4096,
+    arena_batch_size=64,
+    train_steps_per_iteration=256,
     gamesPerIteration=2048,
     lr=0.01,
-    num_channels=64,
-    depth=6,
-    value_head_channels=1,
-    policy_head_channels=2,
-    value_dense_layers=[24],
-    policy_dense_layers=[588]
+    num_channels=128,
+    depth=16,
+    value_head_channels=2,
+    policy_head_channels=8,
+    value_dense_layers=[64],
+    policy_dense_layers=[1024]
 )
 
 

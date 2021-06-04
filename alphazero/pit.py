@@ -16,8 +16,8 @@ if __name__ == '__main__':
     from alphazero.tafl.train_test import args, variants
 
     g = Game(variants.brandubh, max_moves=args.max_moves, num_stacked_obs=args.num_stacked_observations)
-    args.numMCTSSims = 1000
-    args.tempThreshold = 0
+    args.numMCTSSims = 50
+    args.tempThreshold = 8
     args.temp = 0.1
     args.arena_batch_size = 64
 
@@ -28,9 +28,9 @@ if __name__ == '__main__':
 
     # nnet players
     nn1 = NNet(g, args)
-    nn1.load_checkpoint('./checkpoint/hnefatafl_run2', 'iteration-0015.pkl')
+    nn1.load_checkpoint('./checkpoint/brandubh_big_network', 'iteration-0008.pkl')
     nn2 = NNet(g, args)
-    nn2.load_checkpoint('./checkpoint/hnefatafl_run2', 'iteration-0000.pkl')
+    nn2.load_checkpoint('./checkpoint/brandubh_big_network', 'iteration-0000.pkl')
     player1 = nn1.process
     player2 = nn2.process
 
@@ -41,7 +41,7 @@ if __name__ == '__main__':
 
     players = [player1, player2]
     arena = Arena(players, g, use_batched_mcts=True, args=args, display=lambda b: print(b))
-    wins, draws, winrates = arena.play_games(256)
+    wins, draws, winrates = arena.play_games(128)
     for i in range(len(wins)):
         print(f'player{i+1}:\n\twins: {wins[i]}\n\twin rate: {winrates[i]}')
     print('draws: ', draws)

@@ -1,10 +1,10 @@
 # cython: language_level=3
-import random
 
 import torch.multiprocessing as mp
 import numpy as np
 import torch
 import traceback
+import itertools
 
 from alphazero.MCTS import MCTS
 
@@ -15,14 +15,12 @@ def get_game_results(result_queue, game, get_index=None):
     draws = 0
     for _ in range(num_games):
         player, result, board, agent_id = result_queue.get()
-        player = game.getNextPlayer(player, turns=-1)
         if result == 1:
             index = get_index(player, agent_id) if get_index else player
             wins[index] += 1
         elif result == -1:
             for p in game.getPlayers():
-                b = game.getCanonicalForm(board, p, copy=False)
-                if game.getGameEnded(b, game.getPlayers()[0]) == 1:
+                if game.getGameEnded(board, p) == 1:
                     index = get_index(player, agent_id) if get_index else player
                     wins[index] += 1
                     break
@@ -65,7 +63,6 @@ class SelfPlayAgent(mp.Process):
         if _is_arena:
             self.player_to_index = _player_order
             self.batch_indices = None
-            self.data_lens = None
 
         self.fast = False
         for _ in range(self.batch_size):
@@ -95,18 +92,11 @@ class SelfPlayAgent(mp.Process):
                 self.output_queue.join_thread()
         except Exception:
             print(traceback.format_exc())
-    
-    def _index_to_batch(self, index):
-        for player in self.game.getPlayers():
-            if index < self.data_lens[player]:
-                break
-        return self.batch_indices[player][index]
 
     def generateBatch(self):
         if self._is_arena:
             batch_tensor = [[] for _ in self.game.getPlayers()]
             self.batch_indices = [[] for _ in self.game.getPlayers()]
-            self.data_lens = []
 
         for i in range(self.batch_size):
             if self._is_warmup:
@@ -139,10 +129,10 @@ class SelfPlayAgent(mp.Process):
             for player in self.game.getPlayers():
                 player = self.player_to_index[player]
                 data = batch_tensor[player]
-                self.data_lens.append(len(data))
                 if data:
                     batch_tensor[player] = torch.cat(data)
             self.output_queue.put(batch_tensor)
+            self.batch_indices = list(itertools.chain.from_iterable(self.batch_indices))
 
         if not self._is_warmup:
             self.ready_queue.put(self.id)
@@ -152,8 +142,7 @@ class SelfPlayAgent(mp.Process):
             self.batch_ready.wait()
             self.batch_ready.clear()
         for i in range(self.batch_size):
-            index = self._index_to_batch(i) if self._is_arena else i
-            self.mcts[index].processResults(
+            self.mcts[self.batch_indices[i]].processResults(
                 self.policy_tensor[i].data.numpy(), self.value_tensor[i][0]
             )
 
@@ -171,7 +160,7 @@ class SelfPlayAgent(mp.Process):
                 ))
             self.games[i], self.player[i] = self.game.getNextState(self.games[i], self.player[i], action, copy=False)
             self.turn[i] += 1
-            result = self.game.getGameEnded(self.games[i], 0)
+            result = self.game.getGameEnded(self.games[i], self.player[i])
             if result != 0:
                 self.result_queue.put((self.player[i], result, self.games[i], self.id))
                 lock = self.games_played.get_lock()
