@@ -123,13 +123,12 @@ class Arena:
                 self.display(board)
 
             index = cur_player if not player_to_index else player_to_index[cur_player]
-            board = self.game.getCanonicalForm(board, cur_player)
-            action = self.players[index](board, it)
-            valids = self.game.getValidMoves(board, 0)
+            action = self.players[index](board, it, cur_player)
+            valids = self.game.getValidMoves(board, cur_player)
 
             if valids[action] == 0:
                 print()
-                print(action)
+                print(action, index, cur_player, board.current_player)
                 print(valids)
                 print()
                 assert valids[action] > 0
@@ -138,10 +137,10 @@ class Arena:
 
         if verbose:
             assert self.display
-            print("Game over: Turn ", str(it), "Result ", str(self.game.getGameEnded(board, 0)))
+            print("Game over: Turn ", str(it), "Result ", str(self.game.getGameEnded(board, cur_player)))
             self.display(board)
 
-        return self.game.getGameEnded(board, 0), cur_player, board
+        return self.game.getGameEnded(board, cur_player), cur_player, board
 
     def play_games(self, num, verbose=False) -> Tuple[List[int], int, List[int]]:
         """
@@ -282,7 +281,6 @@ class Arena:
 
                 # Play a single game with the current player order
                 result, player, board = self.play_game(verbose, player_to_index)
-                player = self.game.getNextPlayer(player, turns=-1)
 
                 # Bookkeeping + plot progress
                 if result == 1:

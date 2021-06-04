@@ -43,7 +43,7 @@ DEFAULT_ARGS = dotdict({
     'compareWithTester': True,
     'compareTester': RandomPlayer,
     'arenaCompareTester': 16,
-    'arenaCompare': 32*4,
+    'arenaCompare': 128,
     'arenaTemp': 0.1,
     'arenaMCTS': True,
     'arenaBatched': True,
@@ -122,7 +122,7 @@ class Coach:
 
     def learn(self):
         print('Because of batching, it can take a long time before any games finish.')
-        const_i = self.args.startIter
+        const_i = self.current_iter
 
         while self.current_iter <= self.args.numIters:
             i = self.current_iter
@@ -144,9 +144,9 @@ class Coach:
             if not self.warmup and self.args.compareWithTester and (const_i - 1) % self.args.testCompareFreq == 0:
                 if const_i == 1:
                     print(
-                        'Note: Comparisons with Random do not use monte carlo tree search.'
+                        'Note: Comparisons against the tester do not use monte carlo tree search.'
                     )
-                self.compareToRandom(i)
+                self.compareToTester(i)
 
             if not self.warmup and self.args.compareWithPast and (const_i - 1) % self.args.pastCompareFreq == 0:
                 self.compareToPast(i)
@@ -338,14 +338,14 @@ class Coach:
         else:
             self.gating_counter = 0
 
-    def compareToRandom(self, iteration):
+    def compareToTester(self, iteration):
         test_player = self.args.compareTester(self.game).play
 
         cls = MCTSPlayer if self.args.arenaMCTS else NNPlayer
         new_player = cls(self.game, self.nnet, args=self.args)
         nnplayer = new_player.play
 
-        print('PITTING AGAINST TESTER: ' + self.args.compareTester.__class__.__name__)
+        print('PITTING AGAINST TESTER: ' + self.args.compareTester.__name__)
 
         players = [nnplayer]
         players.extend([test_player] * (len(self.game.getPlayers()) - 1))

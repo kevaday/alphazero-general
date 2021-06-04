@@ -6,8 +6,8 @@ class HumanTaflPlayer:
     def __init__(self, game: TaflGame):
         self.game = game
 
-    def play(self, board: Board, turn):
-        valid_moves = self.game.getValidMoves(board, self.game.getPlayers()[0])
+    def play(self, board: Board, turn, player):
+        valid_moves = self.game.getValidMoves(board, player)
 
         def string_to_action(player_inp: str) -> int:
             try:
@@ -29,8 +29,7 @@ class GreedyTaflPlayer:
     def __init__(self, game: TaflGame):
         self.game = game
 
-    def play(self, board: Board, turn):
-        player = self.game.getPlayers()[0]
+    def play(self, board: Board, turn, player):
         valids = self.game.getValidMoves(board, player)
         candidates = []
 

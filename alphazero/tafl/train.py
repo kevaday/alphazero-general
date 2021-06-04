@@ -69,11 +69,11 @@ args = get_args(
     testCompareFreq=3,
     pastCompareFreq=3,
     compareTester=GreedyTaflPlayer,
-    process_batch_size=512,
-    train_batch_size=4096,
+    process_batch_size=256,
+    train_batch_size=2048,
     arena_batch_size=64,
-    train_steps_per_iteration=256,
-    gamesPerIteration=2048,
+    train_steps_per_iteration=100,
+    gamesPerIteration=1024,
     lr=0.01,
     num_channels=128,
     depth=16,
@@ -87,6 +87,5 @@ args = get_args(
 if __name__ == "__main__":
     g = Game(variants.brandubh, max_moves=args.max_moves, num_stacked_obs=args.num_stacked_observations)
     nnet = nn(g, args)
-    # nnet.save_checkpoint(args.checkpoint, f'iteration-0000.pkl')
     c = Coach(g, nnet, args)
     c.learn()
