@@ -13,7 +13,7 @@ class BasePlayer(ABC):
         self.game = game
 
     @abstractmethod
-    def play(self, board, turn: int, palyer: int) -> int:
+    def play(self, board, turn: int) -> int:
         pass
 
 
@@ -21,8 +21,8 @@ class RandomPlayer(BasePlayer):
     def __init__(self, game):
         super().__init__(game)
 
-    def play(self, board, turn, player):
-        valids = self.game.getValidMoves(board, player)
+    def play(self, board, turn):
+        valids = self.game.getValidMoves(board, self.game.getPlayers()[0])
         valids = valids / np.sum(valids)
         a = np.random.choice(self.game.getActionSize(), p=valids)
         return a
@@ -40,9 +40,9 @@ class NNPlayer(BasePlayer):
         self.temp = args.arenaTemp
         self.temp_threshold = args.tempThreshold
 
-    def play(self, board, turn: int, player) -> int:
+    def play(self, board, turn: int) -> int:
         policy, _ = self.nn.predict(board)
-        valids = self.game.getValidMoves(board, player)
+        valids = self.game.getValidMoves(board, self.game.getPlayers()[0])
         options = policy * valids
         temp = 1 if turn <= self.temp_threshold else self.temp
         if temp == 0:
@@ -100,12 +100,11 @@ class MCTSPlayer(BasePlayer):
 
         self.mcts = MCTS(self.game, self.nn, self.args)
 
-    def play(self, board, turn, player) -> int:
+    def play(self, board, turn) -> int:
         if self.reset_mcts and turn <= 2:
             self.mcts.reset()
 
         temp = 1 if turn <= self.temp_threshold else self.temp
-        board = self.game.getCanonicalForm(board, player)
         policy = self.mcts.getActionProb(board, temp=temp)
         
         if self.verbose: print('max tree depth:', self.mcts.depth)

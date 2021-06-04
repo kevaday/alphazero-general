@@ -28,7 +28,7 @@ if __name__ == '__main__':
 
     # nnet players
     nn1 = NNet(g, args)
-    nn1.load_checkpoint('./checkpoint/brandubh', 'iteration-0004.pkl')
+    nn1.load_checkpoint('./checkpoint/brandubh', 'iteration-0009.pkl')
     #nn2 = NNet(g, args)
     #nn2.load_checkpoint('./checkpoint/brandubh', 'iteration-0000.pkl')
     #player1 = nn1.process
@@ -36,8 +36,8 @@ if __name__ == '__main__':
 
     player1 = MCTSPlayer(g, nn1, reset_mcts=True, args=args).play
     #player2 = MCTSPlayer(g, nn2, reset_mcts=True, args=args).play
-    #player2 = RandomPlayer(g).play
-    player2 = GreedyTaflPlayer(g).play
+    player2 = RandomPlayer(g).play
+    #player2 = GreedyTaflPlayer(g).play
 
     players = [player1, player2]
     arena = Arena(players, g, use_batched_mcts=False, args=args, display=print)

@@ -1,13 +1,14 @@
 from hnefatafl.engine import Move, PieceType, Board, BoardGameException
 from alphazero.tafl.tafl import get_action, TaflGame
+from alphazero.GenericPlayers import BasePlayer
 
 
-class HumanTaflPlayer:
+class HumanTaflPlayer(BasePlayer):
     def __init__(self, game: TaflGame):
-        self.game = game
+        super().__init__(game)
 
-    def play(self, board: Board, turn, player):
-        valid_moves = self.game.getValidMoves(board, player)
+    def play(self, board: Board, turn):
+        valid_moves = self.game.getValidMoves(board, self.game.getPlayers()[0])
 
         def string_to_action(player_inp: str) -> int:
             try:
@@ -25,11 +26,12 @@ class HumanTaflPlayer:
         return action
 
 
-class GreedyTaflPlayer:
+class GreedyTaflPlayer(BasePlayer):
     def __init__(self, game: TaflGame):
-        self.game = game
+        super().__init__(game)
 
-    def play(self, board: Board, turn, player):
+    def play(self, board: Board, turn):
+        player = self.game.getPlayers()[0]
         valids = self.game.getValidMoves(board, player)
         candidates = []
 

@@ -59,16 +59,7 @@ class Game(ABC):
                         the `currentPlayer` after `turns` number of turns
                         in the game.
         """
-        players = self.getPlayers()
-
-        nextPlayer = currentPlayer + turns
-        while nextPlayer not in players:
-            if nextPlayer < 0:
-                nextPlayer += len(players)
-            else:
-                nextPlayer -= len(players)
-
-        return nextPlayer
+        return (currentPlayer + turns) % len(self.getPlayers())
 
     def getPlayerToPlay(self, board) -> int:
         """

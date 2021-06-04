@@ -102,7 +102,7 @@ class Arena:
         [player.update_winrate(self.draws, num_games) for player in self.players]
         self.winrates = [player.winrate for player in sorted(self.players, key=lambda p: p.index)]
 
-    def play_game(self, verbose=False, player_to_index: dict = None) -> Tuple[int, int, Any]:
+    def play_game(self, verbose=False, player_to_index: list = None) -> Tuple[int, int, Any]:
         """
         Executes one episode of a game.
 
@@ -111,36 +111,42 @@ class Arena:
             cur_player: the last player to play in the game
             board: the last canonical state/board
         """
-        cur_player = self.game.getPlayers()[0]
+        start_player = self.game.getPlayers()[0]
+        next_player = start_player
+        to_play = start_player
         board = self.game.getInitBoard()
-        it = 0
+        turns = 0
 
-        while self.game.getGameEnded(board, cur_player) == 0:
-            it += 1
+        while True:
             if verbose:
                 assert self.display
-                print("Turn ", str(it), "Player ", str(cur_player))
+                print("Turn ", str(turns), "Player ", str(to_play))
                 self.display(board)
 
-            index = cur_player if not player_to_index else player_to_index[cur_player]
-            action = self.players[index](board, it, cur_player)
-            valids = self.game.getValidMoves(board, cur_player)
+            index = to_play if not player_to_index else player_to_index[to_play]
+            action = self.players[index](board, turns)
+            valids = self.game.getValidMoves(board, start_player)
 
             if valids[action] == 0:
                 print()
-                print(action, index, cur_player, board.current_player)
+                print(action, index, next_player, to_play, turns)
                 print(valids)
                 print()
                 assert valids[action] > 0
 
-            board, cur_player = self.game.getNextState(board, cur_player, action)
+            board, next_player = self.game.getNextState(board, start_player, action)
+            result = self.game.getGameEnded(board, start_player)
 
-        if verbose:
-            assert self.display
-            print("Game over: Turn ", str(it), "Result ", str(self.game.getGameEnded(board, cur_player)))
-            self.display(board)
+            if result != 0:
+                if verbose:
+                    assert self.display
+                    print("Game over: Turn ", str(turns), "Result ", str(self.game.getGameEnded(board, start_player)))
+                    self.display(board)
+                return self.game.getGameEnded(board, start_player), to_play, board
 
-        return self.game.getGameEnded(board, cur_player), cur_player, board
+            board = self.game.getCanonicalForm(board, next_player)
+            to_play = self.game.getNextPlayer(to_play)
+            turns += 1
 
     def play_games(self, num, verbose=False) -> Tuple[List[int], int, List[int]]:
         """
@@ -169,20 +175,20 @@ class Arena:
             result_queue = mp.Queue()
             completed = mp.Value('i', 0)
             games_played = mp.Value('i', 0)
-            players = self.game.getPlayers()
+            player_to_index = self.game.getPlayers().copy()
 
             self.args.expertValueWeight.current = self.args.expertValueWeight.start
             # if self.args.workers >= mp.cpu_count():
             #    self.args.workers = mp.cpu_count() - 1
 
             def get_player_order():
-                if len(players) == 2:
-                    players.reverse()
+                if len(player_to_index) == 2:
+                    player_to_index.reverse()
                 else:
-                    random.shuffle(players)
+                    random.shuffle(player_to_index)
 
             for i in range(self.args.workers):
-                input_tensors = [[] for _ in players]
+                input_tensors = [[] for _ in player_to_index]
                 batch_queues.append(mp.Queue())
 
                 policy_tensors.append(torch.zeros(
@@ -202,7 +208,7 @@ class Arena:
                     SelfPlayAgent(i, self.game, ready_queue, batch_ready[i],
                                   input_tensors, policy_tensors[i], value_tensors[i], batch_queues[i],
                                   result_queue, completed, games_played, self.args,
-                                  _is_arena=True, _player_order=players))
+                                  _is_arena=True, _player_order=player_to_index.copy()))
                 agents[i].start()
 
             sample_time = AverageMeter()
@@ -262,22 +268,18 @@ class Arena:
                 del batch_ready[0]
 
         else:
-            players = self.game.getPlayers()
+            player_to_index = self.game.getPlayers().copy()
             
             def update_players():
                 # Change up the order of the players for even game
-                if len(players) == 2:
-                    players.reverse()
+                if len(player_to_index) == 2:
+                    player_to_index.reverse()
                 else:
-                    random.shuffle(players)
-
-                # Create a dictionary lookup to convert from
-                # in-game players to self.players list
-                return {i: p for i, p in enumerate(players)}
+                    random.shuffle(player_to_index)
 
             for eps in range(1, num + 1):
                 # Get a new lookup for self.players, randomized or reversed from original
-                player_to_index = update_players()
+                update_players()
 
                 # Play a single game with the current player order
                 result, player, board = self.play_game(verbose, player_to_index)
@@ -286,11 +288,18 @@ class Arena:
                 if result == 1:
                     self.players[player_to_index[player]].add_win()
                 elif result == -1:
-                    for p in self.game.getPlayers():
-                        b = self.game.getCanonicalForm(board, p)
-                        if self.game.getGameEnded(b, self.game.getPlayers()[0]) == 1:
+                    p = player
+                    for _ in range(len(player_to_index)-1):
+                        p = self.game.getNextPlayer(p)
+                        b = self.game.getCanonicalForm(board, player - p)
+                        if self.game.getGameEnded(b, p) == 1:
                             self.players[player_to_index[p]].add_win()
                             break
+                    else:
+                        print(board.current_player)
+                        raise RuntimeError(
+                            f'Winner not found after game. Result={result}, player={player}, board:\n{board}'
+                        )
                 else:
                     self.draws += 1
 
