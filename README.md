@@ -6,7 +6,7 @@ This is an implementation of AlphaZero based on the following repositories:
 
 This project is still work-in-progress, so expect frequent fixes, updates, and much more detailed documentation soon.
 
-### Current differences from the above repos:
+### Current differences from the above repos
 1. **Model Gating**: after each iteration, the model is compared to the previous iteration. The model that performs better continues forward based on an adjustable parameter.
 2. **Batched MCTS**: bhandsconnect's repo already includes this for self play, but it has been expanded upon to be included in Arena for faster comparison of models.
 3. **Multiplayer Support**: Any number of players are supported! This allows for training on a greater variety of games such as many types of card games or something like Catan.
@@ -18,7 +18,7 @@ This project is still work-in-progress, so expect frequent fixes, updates, and m
 Make sure you have Python 3 installed. Then run:
 ```pip3 install -r requirements.txt```
 
-### Try one of the existing examples:
+### Try one of the existing examples
 1. Adjust the hyperparameters in one of the examples to your liking (path is ```alphazero/<game name>/train.py```). Take a look at Coach.py where the default arguments are stored to see the available choices you have. For example, edit ```alphazero/connect4/train.py```.
 
 **Note: not all example games have the `train.py` file or may not even be functional yet, I will add/fix them soon. For now, you can copy the train file from another game and change it accordingly such as from tafl or connect4.**
@@ -27,12 +27,12 @@ Make sure you have Python 3 installed. Then run:
 3. You can observe how training is progressing from the console output, or you can also run tensorboard for a visual representation. To start tensorboard, run ```tensorboard --logdir ./runs```, also from the project root. `runs` is the default directory for tensorboard data, but it can be changed in the hyperparameters `args`.
 4. Once you have trained a model and want to test it, either against itself or yourself, change ```alphazero/pit.py``` to your needs and run it with ```python3 -m alphazero.pit``` (once again, these things will be easier to do when I have the time to create proper documentation and make some tools more useable). You can also modify `roundrobin.py` to run a tournament with different iterations of models to rank them using a rating system.
 
-### Create your own game to train on:
+### Create your own game to train on
 Again, more detailed documentation is on the way, but in a nutshell, you must subclass `Game` from `alphazero/Game.py` and implement its abstract methods correctly. If this is done, just create a `train` file and choose hyperparameters accordingly and start training. You can also look at the original repos for more details on how it's done. Also, feel free to use and subclass the `boardgame` module I created to create a new game engine more easily as it implements some functions that may be useful to your case.
 
 In order to increase performance, you can save your game engine files which may be a bottleneck with the extension `.pyx` to be compiled as C files using Cython.
 
-### Description some of hyperparameters:
+### Description of some hyperparameters
 `workers`: Number of processes used for self play, Arena comparison, and training the model.
 
 `process_batch_size`: The size of the batches used for batching MCTS during self play. Equivalent to the number of games that should be played at the same time. In each worker. For exmaple, a batch size of 128 with 4 workers would create 128\*4 = 512 games to be played at the same time in batches.
@@ -70,4 +70,4 @@ In order to increase performance, you can save your game engine files which may 
 `value_dense_layers/policy_dense_layers`: These arguments define the sizes and number of layers in the dense network of the value and policy head. This must be a list of integers where each element defines the number of neurons in the layer and the number of elements defines how many layers there should be.
 
 ## Results
-Results also coming soon! As seen in the directory, I am currently training AlphaZero to play Viking Chess. I created the `boardgame` and `hnefatafl` modules to have a game engine for Viking Chess and to be able to visually play against the trained model when ready using PyQt5. Help yourself to the code to see how I did this so maybe you can do something similar. The `boardgame` module is a base for building a game engine for a boardgame, and as you will see, `hnefatafl` builds off of it.
+Results also coming soon! As seen in the root directory, I am currently training AlphaZero to play Viking Chess. I created the `boardgame` and `hnefatafl` modules to have a game engine for Viking Chess and to be able to visually play against the trained model when ready using PyQt5. Help yourself to the code to see how I did this so maybe you can do something similar. The `boardgame` module is a base for building a game engine for a boardgame, and as you will see, `hnefatafl` builds off of it.
