@@ -142,7 +142,8 @@ class SelfPlayAgent(mp.Process):
             self.batch_ready.wait()
             self.batch_ready.clear()
         for i in range(self.batch_size):
-            self.mcts[self.batch_indices[i]].processResults(
+            index = self.batch_indices[i] if self._is_arena else i
+            self.mcts[index].processResults(
                 self.policy_tensor[i].data.numpy(), self.value_tensor[i][0]
             )
 
