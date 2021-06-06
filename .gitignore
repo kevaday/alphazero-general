@@ -1,0 +1,8 @@
+alphazero/__pycache__
+boardgame/__pycache__
+hnefatafl/__pycache__
+.idea
+checkpoint
+data
+runs
+alphazero/othello/special

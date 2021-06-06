@@ -115,7 +115,7 @@ class SelfPlayAgent(mp.Process):
             if board is not None:
                 data = torch.from_numpy(board.astype(np.float32))
                 if self._is_arena:
-                    player = self.player_to_index[self.game.getPlayerToPlay(board)]
+                    player = self.player_to_index[self.player[i]]
                     data = torch.unsqueeze(data, 0)
                     batch_tensor[player].append(data)
                     self.batch_indices[player].append(i)
@@ -159,6 +159,7 @@ class SelfPlayAgent(mp.Process):
                     self.mcts[i].getExpertValue(self.canonical[i]),
                     self.player[i]
                 ))
+
             self.games[i], self.player[i] = self.game.getNextState(self.games[i], self.player[i], action, copy=False)
             self.turn[i] += 1
             result = self.game.getGameEnded(self.games[i], self.player[i])

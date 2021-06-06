@@ -16,6 +16,10 @@ DRAW_MOVE_COUNT = 50
 NUM_STACKED_OBSERVATIONS = 8
 NUM_BASE_CHANNELS = 5
 NUM_CHANNELS = NUM_BASE_CHANNELS * NUM_STACKED_OBSERVATIONS
+NUM_CHECK_REPEAT_MOVES = 3  # How many repeats to check for
+# Used for checking pairs of moves from same player
+# Changing this breaks repeat check
+_TWO_MOVES = 4
 
 
 def _board_from_numpy(np_board: np.ndarray) -> Board:
@@ -94,6 +98,7 @@ class CustomBoard(Board):
         self.max_moves = max_moves if max_moves else 0
         self.num_stacked_obs = num_stacked_obs
         self.current_player = 0
+        self.winner = None
     
     def copy(self, *args, **kwargs):
         b = super().copy(*args, **kwargs)
@@ -162,7 +167,8 @@ class TaflGame(Game):
             print(e)
             print(b)
             print(str(move), action)
-            print(player)
+            print(list(reversed([str(state[1]) for state in board._past_states])))
+            print(player, board.num_turns, board.get_winner())
             print(bool(self.getValidMoves(board, player)[action]))
             print(move in b.all_valid_moves(b.to_play()))
             exit()
@@ -181,13 +187,32 @@ class TaflGame(Game):
         return np.array(valids, dtype=np.float32)
 
     def getGameEnded(self, board: CustomBoard, player: int):
+        # Check if maximum moves have been exceeded
         if self.board.max_moves and board.num_turns >= self.board.max_moves: return 1e-4
+        winner = board.winner
 
-        winner = board.get_winner()
+        # Check for repetition
+        states = board._past_states
+        if (
+            not winner
+            and len(states) >= _TWO_MOVES * NUM_CHECK_REPEAT_MOVES
+            and all(
+                states[0][1] == state[1] for state in
+                states[:_TWO_MOVES * NUM_CHECK_REPEAT_MOVES:_TWO_MOVES]
+            )
+        ):
+            winner = self._get_piece_type(
+                self.getNextPlayer(
+                    self._get_player_int(board.to_play())
+                )
+            )
+
+        winner = winner or board.get_winner()
         if not winner: return 0
-        
+
         player = self.getNextPlayer(board.current_player, player)
-        
+
+        board.winner = winner
         winner = self._get_player_int(winner)
         reward = int(winner == player)
         reward -= int(winner == self.getNextPlayer(player))
@@ -261,15 +286,14 @@ class TaflGame(Game):
 
 
 if __name__ == '__main__':
-    from hnefatafl.engine import variants, Piece, PieceType
-    import random
+    from hnefatafl.engine import *
 
     g = TaflGame(variants.brandubh)
     # g.board[0][0].piece = Piece(PieceType(3), 0, 0, 0)
-    state = g.getInitBoard()
-    player = g.getPlayers()[0]
-    for _ in range(32):
-        state = g.getCanonicalForm(state, player)
-        valids = g.getValidMoves(state, 0)
-        state, player = g.getNextState(state, 0, random.choice([a for a, v in enumerate(valids) if v == 1]))
-    import pdb;pdb.set_trace()
+    board = g.getInitBoard()
+    for _ in range(6):
+        board.move(Move(board, 3, 0, 2, 0))
+        board.move(Move(board, 3, 2, 2, 2))
+        board.move(Move(board, 2, 0, 3, 0))
+        board.move(Move(board, 2, 2, 3, 2))
+    print(g.getGameEnded(board, 0), g.getGameEnded(board, 1))

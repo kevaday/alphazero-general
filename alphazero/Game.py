@@ -61,20 +61,6 @@ class Game(ABC):
         """
         return (currentPlayer + turns) % len(self.getPlayers())
 
-    def getPlayerToPlay(self, board) -> int:
-        """
-        This method is only used in batched Arena MCTS comparison,
-        so it's not a big deal if this can't be implemented correctly.
-        Input:
-            board: the current state of the game
-        Returns:
-            playerToPlay: the next player to play based on the given
-                          state of the game. Should return the next player
-                          independent of the canonical form (ex. counting
-                          the number of turns played in the game and using modulo).
-        """
-        pass
-
     @abstractmethod
     def getObservationSize(self) -> Tuple[int, int, int]:
         """

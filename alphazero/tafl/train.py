@@ -61,24 +61,28 @@ args = dotdict({
 
 
 args = get_args(
-    run_name='brandubh',
+    run_name='hnefatafl',
     max_moves=DRAW_MOVE_COUNT,
     num_stacked_observations=NUM_STACKED_OBSERVATIONS,
-    cpuct=3,
-    skipSelfPlayIters=1,
-    numWarmupIters=0,
-    testCompareFreq=1,
+    cpuct=0.5,
+    skipSelfPlayIters=0,
+    max_gating_iters=3,
+    numWarmupIters=1,
+    testCompareFreq=2,
     pastCompareFreq=1,
     compareTester=GreedyTaflPlayer,
     min_next_model_winrate=0.52,
+    
     process_batch_size=128,
     train_batch_size=2048,
     arena_batch_size=64,
-    train_steps_per_iteration=64,
+    arenaCompare=64,
+    train_steps_per_iteration=21,
     gamesPerIteration=512,
+    
     lr=0.01,
     num_channels=128,
-    depth=12,
+    depth=10,
     value_head_channels=1,
     policy_head_channels=2,
     value_dense_layers=[64, 32],
@@ -87,7 +91,7 @@ args = get_args(
 
 
 if __name__ == "__main__":
-    g = Game(variants.brandubh, max_moves=args.max_moves, num_stacked_obs=args.num_stacked_observations)
+    g = Game(variants.hnefatafl, max_moves=args.max_moves, num_stacked_obs=args.num_stacked_observations)
     nnet = nn(g, args)
     c = Coach(g, nnet, args)
     c.learn()

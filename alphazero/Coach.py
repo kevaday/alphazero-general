@@ -328,7 +328,7 @@ class Coach:
             self.args.model_gating
             and winrate < self.args.min_next_model_winrate
             and self.args.max_gating_iters
-            and self.gating_counter <= self.args.max_gating_iters
+            and self.gating_counter < self.args.max_gating_iters
         ):
             print(f'Staying on model version {past}')
             self.nnet.load_checkpoint(folder=self.args.checkpoint + '/' + self.args.run_name, filename=get_iter_file(past))
@@ -354,4 +354,4 @@ class Coach:
         winrate = winrates[0]
 
         print(f'NEW/TESTER WINS : {wins[0]} / {sum(wins[1:])} ; DRAWS : {draws}\n')
-        self.writer.add_scalar('win_rate/tester', winrate, iteration)
+        self.writer.add_scalar('win_rate/test', winrate, iteration)
