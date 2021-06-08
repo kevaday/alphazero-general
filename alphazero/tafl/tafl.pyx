@@ -1,8 +1,8 @@
 # cython: language_level=3
 
-# import sys
-# sys.path.extend(['..', '../..'])
-import pyximport; pyximport.install()
+import pyximport;
+
+pyximport.install()
 
 from alphazero.Game import Game
 from hnefatafl.engine import Board, Move, PieceType
@@ -10,16 +10,13 @@ from typing import List, Tuple
 
 import numpy as np
 
-
-NUM_PLAYERS = 2
 DRAW_MOVE_COUNT = 50
 NUM_STACKED_OBSERVATIONS = 8
+NUM_PLAYERS = 2
+NUM_SYMMETRIES = 8
 NUM_BASE_CHANNELS = 5
 NUM_CHANNELS = NUM_BASE_CHANNELS * NUM_STACKED_OBSERVATIONS
-NUM_CHECK_REPEAT_MOVES = 3  # How many repeats to check for
-# Used for checking pairs of moves from same player
-# Changing this breaks repeat check
-_TWO_MOVES = 4
+NUM_MAX_REPEATS = 3  # How many repeats to check for
 
 
 def _board_from_numpy(np_board: np.ndarray) -> Board:
@@ -78,7 +75,7 @@ def _get_observation(board: Board, player_turn: int, const_max_player: int, cons
         obs.extend([black, white, king, turn_colour, turn_number])
 
     def add_empty():
-        obs.extend([[[0]*board.width]*board.height]*NUM_BASE_CHANNELS)
+        obs.extend([[[0] * board.width] * board.height] * NUM_BASE_CHANNELS)
 
     past = board._past_states.copy()
     past.append((board, None))
@@ -87,19 +84,18 @@ def _get_observation(board: Board, player_turn: int, const_max_player: int, cons
         if past_len < i + 1:
             add_empty()
         else:
-            add_obs(past[i][0], past_len-i-1)
+            add_obs(past[i][0], past_len - i - 1)
 
     return np.array(obs, dtype=np.float32)
 
 
 class CustomBoard(Board):
     def __init__(self, *args, max_moves=DRAW_MOVE_COUNT, num_stacked_obs=NUM_STACKED_OBSERVATIONS, **kwargs):
-        super().__init__(*args, **kwargs)
         self.max_moves = max_moves if max_moves else 0
         self.num_stacked_obs = num_stacked_obs
         self.current_player = 0
-        self.winner = None
-    
+        super().__init__(*args, **kwargs)
+
     def copy(self, *args, **kwargs):
         b = super().copy(*args, **kwargs)
         b.max_moves = self.max_moves
@@ -124,6 +120,7 @@ class TaflGame(Game):
             max_moves=max_moves,
             num_stacked_obs=num_stacked_obs,
             board=game_variant,
+            max_repeats=NUM_MAX_REPEATS,
             _store_past_states=True
         )
         self.board_size = (self.board.width, self.board.height)
@@ -187,36 +184,21 @@ class TaflGame(Game):
         return np.array(valids, dtype=np.float32)
 
     def getGameEnded(self, board: CustomBoard, player: int):
-        # Check if maximum moves have been exceeded
-        if self.board.max_moves and board.num_turns >= self.board.max_moves: return 1e-4
-        winner = board.winner
-
-        # Check for repetition
-        states = board._past_states
-        if (
-            not winner
-            and len(states) >= _TWO_MOVES * NUM_CHECK_REPEAT_MOVES
-            and all(
-                states[0][1] == state[1] for state in
-                states[:_TWO_MOVES * NUM_CHECK_REPEAT_MOVES:_TWO_MOVES]
-            )
-        ):
-            winner = self._get_piece_type(
-                self.getNextPlayer(
-                    self._get_player_int(board.to_play())
-                )
-            )
-
-        winner = winner or board.get_winner()
-        if not winner: return 0
-
         player = self.getNextPlayer(board.current_player, player)
 
-        board.winner = winner
+        # Check if maximum moves have been exceeded
+        if self.board.max_moves and board.num_turns >= self.board.max_moves:
+            return 1e-4 * (
+                1 if player == self._get_player_int(board.to_play()) else -1
+            )
+
+        winner = board.get_winner()
+        if not winner: return 0
+
         winner = self._get_player_int(winner)
         reward = int(winner == player)
         reward -= int(winner == self.getNextPlayer(player))
-        
+
         return reward
 
     def getCanonicalForm(self, board: CustomBoard, player: int, copy=True):
@@ -227,7 +209,7 @@ class TaflGame(Game):
     def getSymmetries(self, board: CustomBoard, pi: np.ndarray) -> List[Tuple[CustomBoard, np.ndarray]]:
         action_size = self.getActionSize()
         assert (len(pi) == action_size)
-        syms = [None] * 8
+        syms = [None] * NUM_SYMMETRIES
 
         for i in range(1, 5):
             for flip in (False, True):
@@ -246,7 +228,7 @@ class TaflGame(Game):
 
                 new_b = board.copy(store_past_states=True, state=state.tolist(), past_states=past_states)
 
-                new_pi = [0]*action_size
+                new_pi = [0] * action_size
                 for action, prob in enumerate(pi):
                     move = get_move(board, action)
 
@@ -270,12 +252,13 @@ class TaflGame(Game):
                     new_action = get_action(new_b, move)
                     new_pi[new_action] = prob
 
-                syms[(i-1)*2 + int(flip)] = (new_b, np.array(new_pi, dtype=np.float32))
+                syms[(i - 1) * 2 + int(flip)] = (new_b, np.array(new_pi, dtype=np.float32))
 
         return syms
 
     def stringRepresentation(self, board: CustomBoard):
-        return board.to_string() + str(board.current_player) + str(board.num_turns)
+        return board.to_string() + str(board.current_player) + str(board.num_turns) + \
+               str(board.num_repeats(PieceType.black)) + str(board.num_repeats(PieceType.white))
 
     def getScore(self, board: CustomBoard, player: int) -> int:
         result = self.getGameEnded(board, player)
@@ -285,15 +268,17 @@ class TaflGame(Game):
         return player * (1000 * result + black_pieces - white_pieces)
 
 
-if __name__ == '__main__':
-    from hnefatafl.engine import *
+def test_repetition(n):
+    from hnefatafl.engine import variants
 
     g = TaflGame(variants.brandubh)
     # g.board[0][0].piece = Piece(PieceType(3), 0, 0, 0)
     board = g.getInitBoard()
-    for _ in range(6):
+    # board.move(Move(board, 0, 3, 0, 2))
+    for _ in range(n):
         board.move(Move(board, 3, 0, 2, 0))
         board.move(Move(board, 3, 2, 2, 2))
         board.move(Move(board, 2, 0, 3, 0))
         board.move(Move(board, 2, 2, 3, 2))
-    print(g.getGameEnded(board, 0), g.getGameEnded(board, 1))
+        print(g.getGameEnded(board, 0), g.getGameEnded(board, 1))
+        print(board.num_repeats(PieceType.black), board.num_repeats(PieceType.white))

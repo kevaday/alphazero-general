@@ -73,7 +73,8 @@ class Tile(BaseTile):
 
 
 class Board(BaseBoard):
-    def __init__(self, board: Union['Board', str, list] = variants.hnefatafl, *args, **kwargs):
+    def __init__(self, board: Union['Board', str, list] = variants.hnefatafl, *args,
+                 num_start_white=None, num_start_black=None, **kwargs):
         self.king = None
         self.king_captured = False
         self.king_escaped = False
@@ -81,7 +82,11 @@ class Board(BaseBoard):
         self.__recurse_exit = False
         self.__recurse_checked = []
         self.__recurse_kill = False
+        self.__first_repeat = None
+
         super().__init__(board=board, *args, **kwargs)
+        self.num_start_white = num_start_white or self.num_white
+        self.num_start_black = num_start_black or self.num_black
     
     def copy(self, *args, **kwargs):
         board = super().copy(*args, **kwargs)
@@ -135,21 +140,45 @@ class Board(BaseBoard):
                 row.append(Tile(tile_type, x, y, piece=piece))
             self._board.append(row)
 
+    @property
+    def num_white(self):
+        return len([piece for piece in self.pieces if piece.is_white])
+
+    @property
+    def num_black(self):
+        return len([piece for piece in self.pieces if piece.is_black])
+
+    def num_repeats(self, piece_type: PieceType) -> int:
+        return self._repeats_from(int(piece_type != self.to_play()))
+
+    def get_team_colour(self, piece_type: PieceType) -> PieceType:
+        return PieceType.white if piece_type == PieceType.king else piece_type
+
     def get_king(self):
         for piece in self.pieces:
             if piece.is_king:
                 return piece
 
     def get_winner(self) -> PieceType:
-        if self.check_king_captured() or not len(self.all_valid_moves(PieceType.white)):
+        if (
+            self.check_king_captured()
+            or not len(self.all_valid_moves(PieceType.white))
+            or self.__first_repeat == PieceType.white
+        ):
             return PieceType.black
-        if self.check_king_escaped() or not len(self.all_valid_moves(PieceType.black)):
+
+        if (
+            self.check_king_escaped()
+            or not len(self.all_valid_moves(PieceType.black))
+            or self.__first_repeat == PieceType.black
+        ):
             return PieceType.white
 
     def is_game_over(self) -> bool:
         return self.get_winner() is not None
 
     def to_play(self) -> PieceType:
+        """Get the player who's turn it is based on the board state as a PieceType. Assumes turns are done legally."""
         return PieceType(2 - self.num_turns % 2)
 
     def valid_moves(self, tile_or_piece: Union[Tile, Piece], ret_moves=True) -> Union[Set[Move], Set[Tile]]:
@@ -274,7 +303,7 @@ class Board(BaseBoard):
             self.__recurse_exit = True
             return
 
-    def __check_kill(self, piece: Piece) -> None:
+    def _check_kill(self, piece: Piece) -> None:
         """
         Check whether a piece should be killed or not after a move. Kills a piece surrounding piece if yes.
         :param piece: :type hnefatafl.piece.Piece: piece that just moved to check if it kills something
@@ -345,7 +374,10 @@ class Board(BaseBoard):
         self.get_tile(tile).piece = None
 
         self.__check_surround()
-        self.__check_kill(self.get_piece(new_tile))
+        self._check_kill(self.get_piece(new_tile))
+
+        if not self.__first_repeat and self._repeat_exceeded():
+            self.__first_repeat = piece.type
 
         if _check_game_end:
             self._update_game_over()

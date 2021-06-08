@@ -1,9 +1,12 @@
 # cython: language_level=3
+
 from boardgame.errors import InvalidMoveError
 from typing import Set, List, Callable, Union, Tuple
 from abc import ABC, abstractmethod
 
 import uuid
+
+_TWO_MOVES_BACK = 4
 
 
 class Win(Exception):
@@ -129,17 +132,15 @@ class BaseTile(object):
 
 
 class BaseBoard(ABC):
-    @abstractmethod
     def __init__(self, board: Union['BaseBoard', str, list] = None, load_file: str = None, save_file: str = None,
-                 num_start_white=None, num_start_black=None, custom=False, _store_past_states=True):
+                 max_repeats: int = None, store_initial_state=False, custom=False, _store_past_states=True):
         self.__kwargs = locals()
         del self.__kwargs['self']
         self.save_file = save_file
         self.is_custom = custom
-        self.num_start_white = num_start_white
-        self.num_start_black = num_start_black
         self.pieces = []
         self.killed_pieces = []
+        self.max_repeats = max_repeats
         self._store_past_states = _store_past_states
 
         if isinstance(board, list):
@@ -158,13 +159,9 @@ class BaseBoard(ABC):
 
         if _store_past_states:
             self._past_states = []
+            if store_initial_state: self._update_state(move=None)
         else:
             self._turn_count = 0
-
-        if not num_start_black:
-            self.num_start_black = self.num_black
-        if not num_start_white:
-            self.num_start_white = self.num_white
 
     @abstractmethod
     def load(self, data: str) -> List[str]:
@@ -223,18 +220,19 @@ class BaseBoard(ABC):
             self,
             store_past_states=True,
             state: Union[str, list] = None,
-            past_states: Tuple['BaseBoard', 'Move'] = None
+            past_states: Tuple['BaseBoard', 'Move'] = None,
+            _copy_state=True
     ):
         store = self._store_past_states and store_past_states
         kwargs = self.__kwargs.copy()
-        kwargs['board'] = self.to_string() if not state else state
+        kwargs['board'] = self.to_string() if not state else state.copy() if _copy_state else state
         kwargs['_store_past_states'] = store
         new_board = self.__class__(**kwargs)
 
         if store:
-            new_board._past_states = past_states or (
-                [(state[0], state[1].copy(new_board)) for state in self._past_states]
-            )
+            new_board._past_states = past_states or [
+                (state[0], state[1].copy(new_board) if state[1] else None) for state in self._past_states
+            ]
         else:
             if self._store_past_states:
                 new_board._turn_count = len(self._past_states)
@@ -253,13 +251,20 @@ class BaseBoard(ABC):
         else:
             return self._turn_count
 
-    @property
-    def num_white(self):
-        return len([piece for piece in self.pieces if piece.is_white])
+    def _repeats_from(self, start_index: int = 0, stop_at_max=False) -> int:
+        if not self._store_past_states:
+            raise NotImplementedError('The option to store past states was disabled in this instance of the board, '
+                                      'therefore repeats cannot be counted based on past moves.')
 
-    @property
-    def num_black(self):
-        return len([piece for piece in self.pieces if piece.is_black])
+        count = 0
+        last_move = self.get_past_move(start_index)
+        for i in range(start_index + _TWO_MOVES_BACK, self.num_turns, _TWO_MOVES_BACK):
+            move = self.get_past_move(i)
+            if move != last_move: break
+            count += 1
+            if stop_at_max and self.max_repeats and count >= self.max_repeats: break
+
+        return count
 
     @staticmethod
     def get_piece(tile_or_piece):
@@ -342,7 +347,8 @@ class BaseBoard(ABC):
             self.pieces.remove(tile.piece)
             self[tile.y][tile.x].piece = None
 
-    def __check_kill(self, piece: BasePiece) -> None:
+    @abstractmethod
+    def _check_kill(self, piece: BasePiece) -> None:
         """
         Check whether a piece should be killed or not after a move. Kills piece if yes.
         :param piece: piece that just moved to check if it kills something
@@ -357,16 +363,38 @@ class BaseBoard(ABC):
         """
         pass
 
+    @abstractmethod
+    def get_team_colour(self, piece_type):
+        """Given piece_type, should always return the same constant piece type for the team that piece_type is on."""
+        pass
+
+    @abstractmethod
+    def is_game_over(self) -> bool:
+        """Boolean indicating whether or not the game has ended."""
+        pass
+
+    @abstractmethod
+    def get_winner(self):
+        """Returns the player indicated by a piece type that has won the game. None if there is no winner yet."""
+        pass
+
+    def _repeat_exceeded(self):
+        """To be called after a move is done to check if a player has exceed their maximum allowed repeats."""
+        return self.max_repeats and self._repeats_from(stop_at_max=True) >= self.max_repeats
+
     def _update_state(self, move: 'Move'):
         if self._store_past_states:
-            self._past_states.insert(0, (self.copy(False), move))
+            self._past_states.insert(0, (self.copy(store_past_states=False), move))
         else:
             self._turn_count += 1
 
+    def get_past_move(self, index) -> Union['Move', None]:
+        """Get the a past move that occurred on the board from the given index. Only works if past states are stored."""
+        if not self._store_past_states or index >= len(self._past_states): return
+        return self._past_states[index][1]
+
     def get_last_move(self) -> Union['Move', None]:
-        """Get the last move that occurred on the board."""
-        if not self._store_past_states or not self._past_states: return
-        return self._past_states[0][1]
+        return self.get_past_move(0)
 
     def reset(self):
         self.__init__(**self.__kwargs)
@@ -438,6 +466,13 @@ class Move(object):
     @property
     def is_horizontal(self):
         return not self.is_vertical
+
+    @property
+    def is_diagonal(self):
+        return abs(self.tile.x - self.new_tile.x) == abs(self.tile.y - self.new_tile.y) and self.tile != self.new_tile
+
+    def reverse(self):
+        self.tile, self.new_tile = self.new_tile, self.tile
 
     def serialize(self) -> bytes:
         def byte(i: int) -> bytes: return bytes([i])
