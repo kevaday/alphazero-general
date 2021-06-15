@@ -34,20 +34,20 @@ DEFAULT_ARGS = dotdict({
     'numWarmupIters': 2,  # Iterations where games are played randomly, 0 for none
     'skipSelfPlayIters': 0,
     'symmetricSamples': True,
-    'numMCTSSims': 100,
+    'numMCTSSims': 75,
     'numFastSims': 15,
-    'numWarmupSims': 10,
+    'numWarmupSims': 50,
     'probFastSim': 0.75,
     'tempThreshold': 32,
     'temp': 1,
-    'compareWithTester': True,
-    'compareTester': RandomPlayer,
-    'arenaCompareTester': 16,
+    'compareWithBaseline': True,
+    'baselineTester': RandomPlayer,
+    'arenaCompareBaseline': 16,
     'arenaCompare': 128,
     'arenaTemp': 0.1,
     'arenaMCTS': True,
     'arenaBatched': True,
-    'testCompareFreq': 1,
+    'baselineCompareFreq': 1,
     'compareWithPast': True,
     'pastCompareFreq': 1,
     'model_gating': True,
@@ -141,12 +141,12 @@ class Coach:
                 self.killSelfPlayAgents()
             self.train(i)
 
-            if not self.warmup and self.args.compareWithTester and (const_i - 1) % self.args.testCompareFreq == 0:
+            if not self.warmup and self.args.compareWithBaseline and (const_i - 1) % self.args.baselineCompareFreq == 0:
                 if const_i == 1:
                     print(
                         'Note: Comparisons against the tester do not use monte carlo tree search.'
                     )
-                self.compareToTester(i)
+                self.compareToBaseline(i)
 
             if not self.warmup and self.args.compareWithPast and (const_i - 1) % self.args.pastCompareFreq == 0:
                 self.compareToPast(i)
@@ -338,19 +338,19 @@ class Coach:
         else:
             self.gating_counter = 0
 
-    def compareToTester(self, iteration):
-        test_player = self.args.compareTester(self.game).play
+    def compareToBaseline(self, iteration):
+        test_player = self.args.baselineTester(self.game).play
 
         cls = MCTSPlayer if self.args.arenaMCTS else NNPlayer
         new_player = cls(self.game, self.nnet, args=self.args)
         nnplayer = new_player.play
 
-        print('PITTING AGAINST TESTER: ' + self.args.compareTester.__name__)
+        print('PITTING AGAINST TESTER: ' + self.args.baselineTester.__name__)
 
         players = [nnplayer]
         players.extend([test_player] * (len(self.game.getPlayers()) - 1))
         arena = Arena(players, self.game, use_batched_mcts=False, args=self.args)
-        wins, draws, winrates = arena.play_games(self.args.arenaCompareTester)
+        wins, draws, winrates = arena.play_games(self.args.arenaCompareBaseline)
         winrate = winrates[0]
 
         print(f'NEW/TESTER WINS : {wins[0]} / {sum(wins[1:])} ; DRAWS : {draws}\n')

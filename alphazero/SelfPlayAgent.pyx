@@ -99,8 +99,8 @@ class SelfPlayAgent(mp.Process):
             self.batch_indices = [[] for _ in self.game.getPlayers()]
 
         for i in range(self.batch_size):
+            board = self.mcts[i].findLeafToProcess(self.canonical[i], True)
             if self._is_warmup:
-                board = self.mcts[i].findLeafToProcess(self.canonical[i], True)
                 if board is not None:
                     policy = self.game.getValidMoves(board, self.game.getPlayers()[0])
                     policy = policy / np.sum(policy)
@@ -111,7 +111,6 @@ class SelfPlayAgent(mp.Process):
                     self.value_tensor[i] = 0.
                 continue
 
-            board = self.mcts[i].findLeafToProcess(self.canonical[i], True)
             if board is not None:
                 data = torch.from_numpy(board.astype(np.float32))
                 if self._is_arena:
@@ -164,7 +163,7 @@ class SelfPlayAgent(mp.Process):
             self.turn[i] += 1
             result = self.game.getGameEnded(self.games[i], self.player[i])
             if result != 0:
-                self.result_queue.put((self.player[i], result, self.games[i], self.id))
+                self.result_queue.put((self.player[i], result, self.games[i].copy(store_past_states=False), self.id))
                 lock = self.games_played.get_lock()
                 lock.acquire()
                 if self.games_played.value < self.args.gamesPerIteration:

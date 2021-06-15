@@ -15,9 +15,9 @@ if __name__ == '__main__':
     from alphazero.tafl.players import HumanTaflPlayer, GreedyTaflPlayer
     from alphazero.tafl.train import args, variants
 
-    g = Game(variants.brandubh, max_moves=args.max_moves, num_stacked_obs=args.num_stacked_observations)
-    args.numMCTSSims = 1000
-    args.tempThreshold = 8
+    g = Game(variants.hnefatafl, max_moves=args.max_moves, num_stacked_obs=args.num_stacked_observations)
+    args.numMCTSSims = 100
+    args.tempThreshold = 100
     args.temp = 0.1
     args.arena_batch_size = 64
 
@@ -28,15 +28,15 @@ if __name__ == '__main__':
 
     # nnet players
     nn1 = NNet(g, args)
-    nn1.load_checkpoint('./checkpoint/brandubh', 'iteration-0009.pkl')
-    #nn2 = NNet(g, args)
-    #nn2.load_checkpoint('./checkpoint/brandubh', 'iteration-0000.pkl')
+    nn1.load_checkpoint('./checkpoint/hnefatafl', 'iteration-0003.pkl')
+    nn2 = NNet(g, args)
+    nn2.load_checkpoint('./checkpoint/hnefatafl', 'iteration-0003.pkl')
     #player1 = nn1.process
     #player2 = nn2.process
 
     player1 = MCTSPlayer(g, nn1, reset_mcts=True, args=args).play
-    #player2 = MCTSPlayer(g, nn2, reset_mcts=True, args=args).play
-    player2 = RandomPlayer(g).play
+    player2 = MCTSPlayer(g, nn2, reset_mcts=True, args=args).play
+    #player2 = RandomPlayer(g).play
     #player2 = GreedyTaflPlayer(g).play
 
     players = [player1, player2]

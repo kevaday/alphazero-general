@@ -1,7 +1,7 @@
 # cython: language_level=3
 
 from boardgame.errors import InvalidMoveError
-from typing import Set, List, Callable, Union, Tuple
+from typing import Set, List, Callable, Union, Tuple, Optional
 from abc import ABC, abstractmethod
 
 import uuid
@@ -133,7 +133,7 @@ class BaseTile(object):
 
 class BaseBoard(ABC):
     def __init__(self, board: Union['BaseBoard', str, list] = None, load_file: str = None, save_file: str = None,
-                 max_repeats: int = None, store_initial_state=False, custom=False, _store_past_states=True):
+                 max_repeats: int = None, store_initial_state=False, custom=False, _store_past_states=True, _max_past_states: int = None):
         self.__kwargs = locals()
         del self.__kwargs['self']
         self.save_file = save_file
@@ -159,9 +159,14 @@ class BaseBoard(ABC):
 
         if _store_past_states:
             self._past_states = []
+            self._max_past_states = _max_past_states
+            if _max_past_states:
+                self._turn_count = 0
             if store_initial_state: self._update_state(move=None)
         else:
             self._turn_count = 0
+            self.__last_move = {}
+            self.__repeats = {}
 
     @abstractmethod
     def load(self, data: str) -> List[str]:
@@ -171,7 +176,7 @@ class BaseBoard(ABC):
         self._board = []
         self.pieces = []
         return rows
-        ...
+        # ...
 
     def load_file(self, path: str) -> None:
         with open(path, 'r') as f:
@@ -233,11 +238,10 @@ class BaseBoard(ABC):
             new_board._past_states = past_states or [
                 (state[0], state[1].copy(new_board) if state[1] else None) for state in self._past_states
             ]
+            if self._max_past_states: new_board._turn_count = self._turn_count
         else:
-            if self._store_past_states:
-                new_board._turn_count = len(self._past_states)
-            else:
-                new_board._turn_count = self._turn_count
+            new_board._turn_count = len(self._past_states) \
+                if self._store_past_states and not self._max_past_states else self._turn_count
 
         return new_board
 
@@ -246,25 +250,22 @@ class BaseBoard(ABC):
 
     @property
     def num_turns(self):
+        return len(self._past_states) if self._store_past_states and not self._max_past_states else self._turn_count
+
+    def _repeats_from(self, start_index: int = 0, piece_type=None, stop_at_max=False) -> int:
         if self._store_past_states:
-            return len(self._past_states)
-        else:
-            return self._turn_count
+            count = 0
+            last_move = self.get_past_move(start_index)
+            for i in range(start_index + _TWO_MOVES_BACK, self.num_turns, _TWO_MOVES_BACK):
+                move = self.get_past_move(i)
+                if move != last_move:
+                    break
+                count += 1
+                if stop_at_max and self.max_repeats and count >= self.max_repeats: break
 
-    def _repeats_from(self, start_index: int = 0, stop_at_max=False) -> int:
-        if not self._store_past_states:
-            raise NotImplementedError('The option to store past states was disabled in this instance of the board, '
-                                      'therefore repeats cannot be counted based on past moves.')
+            return count
 
-        count = 0
-        last_move = self.get_past_move(start_index)
-        for i in range(start_index + _TWO_MOVES_BACK, self.num_turns, _TWO_MOVES_BACK):
-            move = self.get_past_move(i)
-            if move != last_move: break
-            count += 1
-            if stop_at_max and self.max_repeats and count >= self.max_repeats: break
-
-        return count
+        return max(self.__repeats[piece_type].values()) if self.__repeats.get(piece_type) else 0
 
     @staticmethod
     def get_piece(tile_or_piece):
@@ -378,22 +379,54 @@ class BaseBoard(ABC):
         """Returns the player indicated by a piece type that has won the game. None if there is no winner yet."""
         pass
 
-    def _repeat_exceeded(self):
+    def _repeat_exceeded(self, piece_type=None):
         """To be called after a move is done to check if a player has exceed their maximum allowed repeats."""
-        return self.max_repeats and self._repeats_from(stop_at_max=True) >= self.max_repeats
+        return self.max_repeats and self._repeats_from(piece_type=piece_type, stop_at_max=True) >= self.max_repeats
 
     def _update_state(self, move: 'Move'):
         if self._store_past_states:
             self._past_states.insert(0, (self.copy(store_past_states=False), move))
+            if self._max_past_states:
+                self._past_states = self._past_states[:self._max_past_states]
+                self._turn_count += 1
         else:
             self._turn_count += 1
+            if not self.max_repeats: return
 
-    def get_past_move(self, index) -> Union['Move', None]:
+            piece_type = self.get_team_colour(move.get_piece().type)
+            remove_repeat = False
+            if self.__last_move.get(piece_type):
+                self.__last_move[piece_type].insert(0, move)
+                while len(self.__last_move[piece_type]) > 3:
+                    del self.__last_move[piece_type][-1]
+                    remove_repeat = True
+            else:
+                self.__last_move[piece_type] = [move]
+                return
+            
+            repeat = int(
+                len(self.__last_move[piece_type]) > 2
+                and move == self.__last_move[piece_type][-1]
+            )
+            if self.__repeats.get(piece_type):
+                if self.__repeats[piece_type].get(move):
+                    if repeat:
+                        self.__repeats[piece_type][move] += repeat
+                    else:
+                        if remove_repeat:
+                            del self.__repeats[piece_type][move]
+                        else:
+                            self.__repeats[piece_type][move] = repeat
+
+                else: self.__repeats[piece_type].update({move: repeat})
+            else: self.__repeats[piece_type] = {move: repeat}
+
+    def get_past_move(self, index) -> Optional['Move']:
         """Get the a past move that occurred on the board from the given index. Only works if past states are stored."""
         if not self._store_past_states or index >= len(self._past_states): return
         return self._past_states[index][1]
 
-    def get_last_move(self) -> Union['Move', None]:
+    def get_last_move(self) -> Optional['Move']:
         return self.get_past_move(0)
 
     def reset(self):
@@ -432,16 +465,21 @@ class Move(object):
             print('empty move, args: ', args)
 
     def __repr__(self):
-        return f'{self.__class__.__name__}(tile={repr(self.tile)}, new_tile={repr(self.new_tile)})'
+        return f'({self.tile.x},{self.tile.y})->({self.new_tile.x},{self.new_tile.y})'
 
     def __str__(self):
-        return f'({self.tile.x},{self.tile.y})->({self.new_tile.x},{self.new_tile.y})'
+        return f'{self.__class__.__name__}(tile={repr(self.tile)}, new_tile={repr(self.new_tile)})'
 
     def __eq__(self, other):
         return other is not None and self.tile == other.tile and self.new_tile == other.new_tile
 
     def __hash__(self):
         return hash(f'{hash(self.tile)} {hash(self.new_tile)}')
+
+    def __reversed__(self):
+        move = self.copy()
+        move.reverse()
+        return move
 
     def __item_from_args(self, *args) -> Union[BaseTile, BasePiece]:
         tile_or_piece = None
@@ -454,6 +492,10 @@ class Move(object):
                 tile_or_piece = self.board[args[1]][args[0]]
 
         return tile_or_piece
+    
+    def get_piece(self):
+        if self.tile.piece: return self.tile.piece
+        if self.new_tile.piece: return self.new_tile.piece
 
     def copy(self, new_board: BaseBoard = None):
         new_board = new_board or self.board
@@ -554,6 +596,6 @@ class BaseBot(object):
     def __init__(self, player: BasePlayer):
         self.player = player
 
-    def get_move(self, board: BaseBoard) -> Union[Move, None]:
+    def get_move(self, board: BaseBoard) -> Optional[Move]:
         """Method for getting a move from the bot's logic based on the given :param board:"""
         pass

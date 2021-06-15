@@ -1,7 +1,5 @@
 # cython: language_level=3
 
-# import sys
-# sys.path.extend(['..', '../..'])
 import pyximport; pyximport.install()
 
 from alphazero.Game import Game
@@ -12,14 +10,15 @@ import numpy as np
 
 
 NUM_PLAYERS = 2
-DRAW_MOVE_COUNT = 50
+DRAW_MOVE_COUNT = 128
 NUM_STACKED_OBSERVATIONS = 8
 NUM_BASE_CHANNELS = 5
 NUM_CHANNELS = NUM_BASE_CHANNELS * NUM_STACKED_OBSERVATIONS
-NUM_CHECK_REPEAT_MOVES = 3  # How many repeats to check for
+MAX_REPEATS = 3  # N-fold repetition loss
 # Used for checking pairs of moves from same player
 # Changing this breaks repeat check
-_TWO_MOVES = 4
+_ONE_MOVE = 2
+_TWO_MOVES = _ONE_MOVE * 2
 
 
 def _board_from_numpy(np_board: np.ndarray) -> Board:
@@ -124,7 +123,8 @@ class TaflGame(Game):
             max_moves=max_moves,
             num_stacked_obs=num_stacked_obs,
             board=game_variant,
-            _store_past_states=True
+            _store_past_states=True,
+            _max_past_states=max(num_stacked_obs, _TWO_MOVES * MAX_REPEATS + _ONE_MOVE)
         )
         self.board_size = (self.board.width, self.board.height)
         self.action_size = self.board.width * self.board.height * (self.board.width + self.board.height - 2)
@@ -164,10 +164,11 @@ class TaflGame(Game):
         try:
             b.move(move, _check_game_end=False, _check_valid=False)
         except Exception as e:
+            print()
             print(e)
             print(b)
             print(str(move), action)
-            print(list(reversed([str(state[1]) for state in board._past_states])))
+            print(list(reversed(board._past_states)))
             print(player, board.num_turns, board.get_winner())
             print(bool(self.getValidMoves(board, player)[action]))
             print(move in b.all_valid_moves(b.to_play()))
@@ -188,31 +189,14 @@ class TaflGame(Game):
 
     def getGameEnded(self, board: CustomBoard, player: int):
         # Check if maximum moves have been exceeded
-        if self.board.max_moves and board.num_turns >= self.board.max_moves: return 1e-4
-        winner = board.winner
+        if self.board.max_moves and board.num_turns >= self.board.max_moves:
+            return -1e-4
 
-        # Check for repetition
-        states = board._past_states
-        if (
-            not winner
-            and len(states) >= _TWO_MOVES * NUM_CHECK_REPEAT_MOVES
-            and all(
-                states[0][1] == state[1] for state in
-                states[:_TWO_MOVES * NUM_CHECK_REPEAT_MOVES:_TWO_MOVES]
-            )
-        ):
-            winner = self._get_piece_type(
-                self.getNextPlayer(
-                    self._get_player_int(board.to_play())
-                )
-            )
-
-        winner = winner or board.get_winner()
+        winner = board.get_winner()
         if not winner: return 0
 
         player = self.getNextPlayer(board.current_player, player)
 
-        board.winner = winner
         winner = self._get_player_int(winner)
         reward = int(winner == player)
         reward -= int(winner == self.getNextPlayer(player))
@@ -275,14 +259,14 @@ class TaflGame(Game):
         return syms
 
     def stringRepresentation(self, board: CustomBoard):
-        return board.to_string() + str(board.current_player) + str(board.num_turns)
+        return board.to_string() + str(board.current_player) + str(board.num_turns) + \
+               str(board.num_repeats(PieceType.black)) + str(board.num_repeats(PieceType.white))
 
     def getScore(self, board: CustomBoard, player: int) -> int:
         result = self.getGameEnded(board, player)
-        player = (1 if player == self.getPlayers()[0] else -1)
         white_pieces = len(list(filter(lambda p: p.is_white, board.pieces)))
         black_pieces = len(list(filter(lambda p: p.is_black, board.pieces)))
-        return player * (1000 * result + black_pieces - white_pieces)
+        return [1, -1][player] * (1000 * result + black_pieces - white_pieces)
 
 
 if __name__ == '__main__':

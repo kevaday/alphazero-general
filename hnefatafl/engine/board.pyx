@@ -92,6 +92,7 @@ class Board(BaseBoard):
         board = super().copy(*args, **kwargs)
         board.king_escaped = self.king_escaped
         board.king_captured = self.king_captured
+        board.__first_repeat = self.__first_repeat
         return board
 
     def load(self, data: str) -> None:
@@ -149,7 +150,10 @@ class Board(BaseBoard):
         return len([piece for piece in self.pieces if piece.is_black])
 
     def num_repeats(self, piece_type: PieceType) -> int:
-        return self._repeats_from(int(piece_type != self.to_play()))
+        if self._store_past_states:
+            return self._repeats_from(int(piece_type != self.to_play()))
+        else:
+            return self._repeats_from(piece_type=piece_type)
 
     def get_team_colour(self, piece_type: PieceType) -> PieceType:
         return PieceType.white if piece_type == PieceType.king else piece_type
@@ -160,17 +164,18 @@ class Board(BaseBoard):
                 return piece
 
     def get_winner(self) -> PieceType:
+        self._update_game_over()
         if (
-            self.check_king_captured()
-            or not len(self.all_valid_moves(PieceType.white))
+            self.king_captured
             or self.__first_repeat == PieceType.white
+            or not len(self.all_valid_moves(PieceType.white))
         ):
             return PieceType.black
 
         if (
-            self.check_king_escaped()
-            or not len(self.all_valid_moves(PieceType.black))
+            self.king_escaped
             or self.__first_repeat == PieceType.black
+            or not len(self.all_valid_moves(PieceType.black))
         ):
             return PieceType.white
 
@@ -376,8 +381,9 @@ class Board(BaseBoard):
         self.__check_surround()
         self._check_kill(self.get_piece(new_tile))
 
-        if not self.__first_repeat and self._repeat_exceeded():
-            self.__first_repeat = piece.type
+        piece_type = self.get_team_colour(piece.type)
+        if not self.__first_repeat and self._repeat_exceeded(piece_type):
+            self.__first_repeat = piece_type
 
         if _check_game_end:
             self._update_game_over()

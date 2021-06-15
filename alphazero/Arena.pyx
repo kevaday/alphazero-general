@@ -292,7 +292,7 @@ class Arena:
                     for _ in range(len(player_to_index)-1):
                         p = self.game.getNextPlayer(p)
                         b = self.game.getCanonicalForm(board, player - p)
-                        if self.game.getGameEnded(b, p) == 1:
+                        if self.game.getGameEnded(b, 0) == 1:
                             self.players[player_to_index[p]].add_win()
                             break
                     else:

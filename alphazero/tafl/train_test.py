@@ -32,13 +32,13 @@ args = dotdict({
     'probFastSim': 0.75,
     'tempThreshold': 10,
     'temp': 1,
-    'compareWithTester': True,
-    'arenaCompareTester': 16,
+    'compareWithBaseline': True,
+    'arenaCompareBaseline': 16,
     'arenaCompare': 32*4,
     'arenaTemp': 0.25,
     'arenaMCTS': True,
     'arenaBatched': True,
-    'testCompareFreq': 1,
+    'baselineCompareFreq': 1,
     'compareWithPast': True,
     'pastCompareFreq': 1,
     'model_gating': True,
@@ -61,14 +61,15 @@ args = dotdict({
 
 
 args = get_args(
-    run_name='brandubh',
+    run_name='hnefatafl',
     max_moves=DRAW_MOVE_COUNT,
     num_stacked_observations=NUM_STACKED_OBSERVATIONS,
-    cpuct=3,
+    tempThreshold=int(DRAW_MOVE_COUNT*0.8),
+    cpuct=2,
     numWarmupIters=1,
-    testCompareFreq=3,
+    baselineCompareFreq=3,
     pastCompareFreq=3,
-    compareTester=GreedyTaflPlayer,
+    baselineTester=GreedyTaflPlayer,
     process_batch_size=512,
     train_batch_size=4096,
     arena_batch_size=64,
@@ -77,15 +78,15 @@ args = get_args(
     lr=0.01,
     num_channels=128,
     depth=16,
-    value_head_channels=2,
-    policy_head_channels=8,
-    value_dense_layers=[64],
+    value_head_channels=1,
+    policy_head_channels=2,
+    value_dense_layers=[64, 32],
     policy_dense_layers=[1024]
 )
 
 
 if __name__ == "__main__":
-    g = Game(variants.brandubh, max_moves=args.max_moves, num_stacked_obs=args.num_stacked_observations)
+    g = Game(variants.hnefatafl, max_moves=args.max_moves, num_stacked_obs=args.num_stacked_observations)
     nnet = nn(g, args)
     # nnet.save_checkpoint(args.checkpoint, f'iteration-0000.pkl')
     c = Coach(g, nnet, args)
