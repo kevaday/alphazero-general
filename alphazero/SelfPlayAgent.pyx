@@ -163,7 +163,7 @@ class SelfPlayAgent(mp.Process):
             self.turn[i] += 1
             result = self.game.getGameEnded(self.games[i], self.player[i])
             if result != 0:
-                self.result_queue.put((self.player[i], result, self.games[i].copy(store_past_states=False), self.id))
+                self.result_queue.put((self.player[i], result, self.games[i], self.id))
                 lock = self.games_played.get_lock()
                 lock.acquire()
                 if self.games_played.value < self.args.gamesPerIteration:

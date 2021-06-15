@@ -80,12 +80,12 @@ args = get_args(
     baselineTester=GreedyTaflPlayer,
     min_next_model_winrate=0.52,
     
-    process_batch_size=64,
+    process_batch_size=32,
     train_batch_size=1024,
-    arena_batch_size=64,
+    arena_batch_size=32,
     arenaCompare=128,
     train_steps_per_iteration=64,
-    gamesPerIteration=64*4,
+    gamesPerIteration=32*4,
     
     lr=0.01,
     num_channels=128,
