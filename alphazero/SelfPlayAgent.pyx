@@ -85,6 +85,7 @@ class SelfPlayAgent(mp.Process):
                     self.generateBatch()
                     self.processBatch()
                 self.playMoves()
+            
             with self.complete_count.get_lock():
                 self.complete_count.value += 1
             if not self._is_arena:
@@ -114,8 +115,8 @@ class SelfPlayAgent(mp.Process):
             if board is not None:
                 data = torch.from_numpy(board.astype(np.float32))
                 if self._is_arena:
+                    data = data.view(-1, *self.game.getObservationSize())
                     player = self.player_to_index[self.player[i]]
-                    data = torch.unsqueeze(data, 0)
                     batch_tensor[player].append(data)
                     self.batch_indices[player].append(i)
                 else:
@@ -163,7 +164,7 @@ class SelfPlayAgent(mp.Process):
             self.turn[i] += 1
             result = self.game.getGameEnded(self.games[i], self.player[i])
             if result != 0:
-                self.result_queue.put((self.player[i], result, self.games[i], self.id))
+                self.result_queue.put((self.player[i], result, self.games[i].copy(store_past_states=False), self.id))
                 lock = self.games_played.get_lock()
                 lock.acquire()
                 if self.games_played.value < self.args.gamesPerIteration:

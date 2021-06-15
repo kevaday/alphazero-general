@@ -209,6 +209,7 @@ class Arena:
                                   input_tensors, policy_tensors[i], value_tensors[i], batch_queues[i],
                                   result_queue, completed, games_played, self.args,
                                   _is_arena=True, _player_order=player_to_index.copy()))
+                agents[i].daemon = True
                 agents[i].start()
 
             sample_time = AverageMeter()

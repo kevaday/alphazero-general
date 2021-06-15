@@ -98,7 +98,7 @@ class NNetArchitecture(nn.Module):
 
     def forward(self, s):
         #                                                           s: batch_size x board_x x board_y
-        # batch_size x 1 x board_x x board_y
+        # batch_size x channels x board_x x board_y
         s = s.view(-1, self.channels, self.board_x, self.board_y)
         # batch_size x num_channels x board_x x board_y
         s = F.relu(self.bn1(self.conv1(s)))

@@ -187,6 +187,7 @@ class Coach:
                               self.input_tensors[i], self.policy_tensors[i], self.value_tensors[i], self.file_queue,
                               self.result_queue, self.completed, self.games_played, self.args, _is_warmup=self.warmup)
             )
+            self.agents[i].daemon = True
             self.agents[i].start()
 
     def processSelfPlayBatches(self):
@@ -235,6 +236,7 @@ class Coach:
     def saveIterationSamples(self, iteration):
         num_samples = self.file_queue.qsize()
         print(f'Saving {num_samples} samples')
+        
         data_tensor = torch.zeros([num_samples, *self.game.getObservationSize()])
         policy_tensor = torch.zeros([num_samples, self.game.getActionSize()])
         value_tensor = torch.zeros([num_samples, 1])
@@ -247,6 +249,7 @@ class Coach:
         folder = self.args.data + '/' + self.args.run_name
         filename = folder + '/' + get_iter_file(iteration).replace('.pkl', '')
         if not os.path.exists(folder): os.makedirs(folder)
+        
         torch.save(data_tensor, filename + '-data.pkl')
         torch.save(policy_tensor, filename + '-policy.pkl')
         torch.save(value_tensor, filename + '-value.pkl')
