@@ -1,5 +1,6 @@
 from alphazero.Game import Game
 from alphazero.gobang.GobangLogic import Board
+
 import numpy as np
 
 NUM_PLAYERS = 2
@@ -47,7 +48,7 @@ class GobangGame(Game):
         # return a fixed size binary vector
         valids = [0] * self.getActionSize()
         b = Board(self.n)
-        b.pieces = np.copy(board)
+        b.pieces = board
 
         legalMoves = b.get_legal_moves(player)
         if len(legalMoves) == 0:
@@ -63,7 +64,7 @@ class GobangGame(Game):
         # return 0 if not ended, 1 if player 1 won, -1 if player 1 lost
         # player = 1
         b = Board(self.n)
-        b.pieces = np.copy(board)
+        b.pieces = board
         n = self.n_in_row
 
         for w in range(self.n):
@@ -82,7 +83,7 @@ class GobangGame(Game):
                     return board[w][h]
         if b.has_legal_moves():
             return 0
-        return 1e-4
+        return -1e-4
 
     def getCanonicalForm(self, board, player, copy=True):
         # return state if player==0, else return -state if player==1

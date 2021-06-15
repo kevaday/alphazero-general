@@ -27,7 +27,7 @@ class OthelloGame(Game):
         return self.n * self.n + 1
 
     def getObservationSize(self):
-        return NUM_CHANNELS, *self.getBoardSize()
+        return (NUM_CHANNELS, *self.getBoardSize())
 
     def getPlayers(self):
         return list(range(NUM_PLAYERS))
@@ -35,11 +35,11 @@ class OthelloGame(Game):
     def _player_range(self, player):
         return 1 if player == self.getPlayers()[0] else -1
 
-    def getNextState(self, board, player, action):
+    def getNextState(self, board, player, action, copy=True):
         # if player takes action on board, return next (board,player)
         # action must be a valid move
         b = Board(self.n)
-        b.pieces = np.copy(board)
+        b.pieces = np.copy(board) if copy else board
 
         if action == self.n * self.n + 1:
             return b, self.getNextPlayer(player)
@@ -52,7 +52,7 @@ class OthelloGame(Game):
         # return a fixed size binary vector
         valids = [0] * self.getActionSize()
         b = Board(self.n)
-        b.pieces = np.copy(board)
+        b.pieces = board
 
         legalMoves = b.get_legal_moves(player)
         if len(legalMoves) == 0:
@@ -67,7 +67,7 @@ class OthelloGame(Game):
     def getGameEnded(self, board, player):
         # return 0 if not ended, 1 if player 1 won, -1 if player 1 lost
         b = Board(self.n)
-        b.pieces = np.copy(board)
+        b.pieces = board
         player = self._player_range(player)
 
         if b.has_legal_moves(player):
@@ -78,7 +78,7 @@ class OthelloGame(Game):
             return 1
         return -1
 
-    def getCanonicalForm(self, board, player):
+    def getCanonicalForm(self, board, player, copy=True):
         # return state if player==1, else return -state if player==-1
         return board * self._player_range(player)
 

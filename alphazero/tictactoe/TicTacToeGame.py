@@ -35,18 +35,19 @@ class TicTacToeGame(Game):
         return self.n * self.n + 1
 
     def getObservationSize(self):
-        return NUM_CHANNELS, *self.getBoardSize()
+        return (NUM_CHANNELS, *self.getBoardSize())
 
     def getPlayers(self):
         return list(range(NUM_PLAYERS))
 
-    def _player_range(self, player):
-        return 1 if player == self.getPlayers()[0] else -1
+    @staticmethod
+    def _player_range(player):
+        return [1, -1][player]
 
-    def getNextState(self, board, player, action):
+    def getNextState(self, board, player, action, copy=True):
         # if player takes action on board, return next (board,player)
         b = Board(self.n)
-        b.pieces = np.copy(board)
+        b.pieces = np.copy(board) if copy else board
 
         # action must be a valid move
         if action == self.n * self.n + 1:
@@ -60,7 +61,7 @@ class TicTacToeGame(Game):
         # return a fixed size binary vector
         valids = [0] * self.getActionSize()
         b = Board(self.n)
-        b.pieces = np.copy(board)
+        b.pieces = board
 
         legalMoves = b.get_legal_moves(player)
         if len(legalMoves) == 0:
@@ -76,7 +77,7 @@ class TicTacToeGame(Game):
         # return 0 if not ended, 1 if player 1 won, -1 if player 1 lost
         player = self._player_range(player)
         b = Board(self.n)
-        b.pieces = np.copy(board)
+        b.pieces = board
 
         if b.is_win(player):
             return 1
@@ -85,9 +86,9 @@ class TicTacToeGame(Game):
         if b.has_legal_moves():
             return 0
         # draw has a very little value 
-        return 1e-4
+        return -1e-4
 
-    def getCanonicalForm(self, board, player):
+    def getCanonicalForm(self, board, player, copy=True):
         # return state if player==1, else return -state if player==-1
         return board * self._player_range(player)
 

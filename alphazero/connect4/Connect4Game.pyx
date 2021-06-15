@@ -32,7 +32,7 @@ class Connect4Game(Game):
         return self.width
 
     def getObservationSize(self):
-        return NUM_CHANNELS, self.height, self.width
+        return (NUM_CHANNELS, *self.getBoardSize())
 
     def getPlayers(self):
         return list(range(NUM_PLAYERS))
@@ -43,28 +43,28 @@ class Connect4Game(Game):
     def _player_range(self, player):
         return 1 if player == self.getPlayers()[0] else -1
 
-    def getNextState(self, board, player, action):
+    def getNextState(self, board, player, action, copy=True):
         """Returns a copy of the board with updated move, original board is unmodified."""
         b = Board(self.height, self.width, self.win_length)
-        b.pieces = np.copy(board)
+        b.pieces = np.copy(board) if copy else board
         b.add_stone(action, self._player_range(player))
         return np.asarray(b.pieces), self.getNextPlayer(player)
 
     def getValidMoves(self, board, player):
         """Any zero value in top row in a valid move"""
         b = Board(self.height, self.width, self.win_length)
-        b.pieces = np.copy(board)
+        b.pieces = board
         return np.asarray(b.get_valid_moves())
 
     def getGameEnded(self, board, player):
         player = self._player_range(player)
         b = Board(self.height, self.width, self.win_length)
-        b.pieces = np.copy(board)
+        b.pieces = board
         is_ended, winner = b.get_win_state()
         if is_ended:
             if winner is None:
-                # draw has very little value.
-                return 1e-4
+                # draw has very little negative value.
+                return -1e-4
             elif winner == player:
                 return +1
             elif winner == -player:
@@ -75,7 +75,7 @@ class Connect4Game(Game):
             # 0 used to represent unfinished game.
             return 0
 
-    def getCanonicalForm(self, board, player):
+    def getCanonicalForm(self, board, player, copy=True):
         # Flip player from 1 to -1
         return board * self._player_range(player)
 
