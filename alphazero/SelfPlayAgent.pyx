@@ -30,6 +30,34 @@ def get_game_results(result_queue, game, get_index=None):
     return wins, draws
 
 
+def _translate(value, left_min, left_max, right_min, right_max):
+    # Figure out how 'wide' each range is
+    left_span = left_max - left_min
+    right_span = right_max - right_min
+
+    # Convert the left range into a 0-1 range (float)
+    value_scaled = float(value - left_min) / float(left_span)
+
+    # Convert the 0-1 range into a value in the right range.
+    return right_min + (value_scaled * right_span)
+
+
+"""
+def memory_usage(vars):
+    def sizeof_fmt(num, suffix='B'):
+        '''by Fred Cirera,  https://stackoverflow.com/a/1094933/1870254, modified'''
+        for unit in ['','Ki','Mi','Gi','Ti','Pi','Ei','Zi']:
+            if abs(num) < 1024.0:
+                return "%3.1f %s%s" % (num, unit, suffix)
+            num /= 1024.0
+        return "%.1f %s%s" % (num, 'Yi', suffix)
+
+    for name, size in sorted(((name, asizeof.asizeof(value)) for name, value in vars.items()),
+                             key= lambda x: -x[1])[:10]:
+        print("{:>30}: {:>8}".format(name, sizeof_fmt(size)))
+"""
+
+
 class SelfPlayAgent(mp.Process):
     def __init__(self, id, game, ready_queue, batch_ready, batch_tensor, policy_tensor,
                  value_tensor, output_queue, result_queue, complete_count, games_played, args,
@@ -53,6 +81,7 @@ class SelfPlayAgent(mp.Process):
         self.histories = []
         self.player = []
         self.turn = []
+        self.next_reset = []
         self.mcts = []
         self.games_played = games_played
         self.complete_count = complete_count
@@ -70,6 +99,7 @@ class SelfPlayAgent(mp.Process):
             self.histories.append([])
             self.player.append(self.game.getPlayers()[0])
             self.turn.append(1)
+            self.next_reset.append(0)
             self.mcts.append(MCTS(self.game, None, self.args))
             self.canonical.append(None)
 
@@ -85,7 +115,7 @@ class SelfPlayAgent(mp.Process):
                     self.generateBatch()
                     self.processBatch()
                 self.playMoves()
-            
+
             with self.complete_count.get_lock():
                 self.complete_count.value += 1
             if not self._is_arena:
@@ -162,9 +192,13 @@ class SelfPlayAgent(mp.Process):
 
             self.games[i], self.player[i] = self.game.getNextState(self.games[i], self.player[i], action, copy=False)
             self.turn[i] += 1
+            if self.args.mctsResetThreshold and self.turn[i] >= self.next_reset[i]:
+                self.mcts[i].reset()
+                self.next_reset[i] = self.turn[i] + self.args.mctsResetThreshold
+
             result = self.game.getGameEnded(self.games[i], self.player[i])
             if result != 0:
-                self.result_queue.put((self.player[i], result, self.games[i].copy(store_past_states=False), self.id))
+                self.result_queue.put((self.player[i], result, self.games[i], self.id))
                 lock = self.games_played.get_lock()
                 lock.acquire()
                 if self.games_played.value < self.args.gamesPerIteration:
@@ -175,17 +209,21 @@ class SelfPlayAgent(mp.Process):
                             if self.args.symmetricSamples:
                                 sym = self.game.getSymmetries(hist[0], hist[1])
                                 for b, p in sym:
-                                    self.output_queue.put((b.astype(np.float32), p,
-                                                           result *
-                                                           hist[3] *
-                                                           (1 - self.args.expertValueWeight.current)
-                                                           + self.args.expertValueWeight.current * hist[2]))
+                                    self.output_queue.put((
+                                        b, p,
+                                        result * _translate(
+                                            self.player[i], self.game.getPlayers()[0], self.game.getPlayers()[-1], 1, -1
+                                        ) * (1 - self.args.expertValueWeight.current)
+                                        + self.args.expertValueWeight.current * hist[2]
+                                    ))
                             else:
-                                self.output_queue.put((hist[0].astype(np.float32), hist[1],
-                                                       result *
-                                                       hist[3] *
-                                                       (1 - self.args.expertValueWeight.current)
-                                                       + self.args.expertValueWeight.current * hist[2]))
+                                self.output_queue.put((
+                                    hist[0], hist[1],
+                                    result * _translate(
+                                        self.player[i], self.game.getPlayers()[0], self.game.getPlayers()[-1], 1, -1
+                                    ) * (1 - self.args.expertValueWeight.current)
+                                    + self.args.expertValueWeight.current * hist[2]
+                                ))
                     self.games[i] = self.game.getInitBoard()
                     self.histories[i] = []
                     self.player[i] = self.game.getPlayers()[0]

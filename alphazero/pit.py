@@ -28,9 +28,9 @@ if __name__ == '__main__':
 
     # nnet players
     nn1 = NNet(g, args)
-    nn1.load_checkpoint('./checkpoint/hnefatafl', 'iteration-0003.pkl')
+    nn1.load_checkpoint('./checkpoint/hnefatafl', 'iteration-0002.pkl')
     nn2 = NNet(g, args)
-    nn2.load_checkpoint('./checkpoint/hnefatafl', 'iteration-0003.pkl')
+    nn2.load_checkpoint('./checkpoint/hnefatafl', 'iteration-0000.pkl')
     #player1 = nn1.process
     #player2 = nn2.process
 
