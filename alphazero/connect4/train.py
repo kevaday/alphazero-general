@@ -18,7 +18,7 @@ args = get_args(dotdict({
     'train_steps_per_iteration': 512,
     # should preferably be a multiple of process_batch_size and workers
     'gamesPerIteration': 4*128*mp.cpu_count(),
-    'numItersForTrainExamplesHistory': 100,
+    '': 100,
     'symmetricSamples': True,
     'numMCTSSims': 50,
     'numFastSims': 5,

@@ -131,7 +131,7 @@ class NNetWrapper(NeuralNet):
             'state_dict': self.nnet.state_dict(),
             'opt_state': self.optimizer.state_dict(),
             'sch_state': self.scheduler.state_dict()
-        }, filepath)
+        }, filepath, pickle_protocol=5)
 
     def load_checkpoint(self, folder='checkpoint', filename='checkpoint.pth.tar'):
         # https://github.com/pytorch/examples/blob/master/imagenet/main.py#L98

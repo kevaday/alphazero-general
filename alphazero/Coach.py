@@ -25,9 +25,12 @@ DEFAULT_ARGS = dotdict({
     'train_batch_size': 512,
     'arena_batch_size': 32,
     'train_steps_per_iteration': 256,
+    'autoTrainSteps': True,
     # should preferably be a multiple of process_batch_size and workers
     'gamesPerIteration': 64 * mp.cpu_count(),
-    'numItersForTrainExamplesHistory': 10,
+    'minTrainHistoryWindow': 2,
+    'maxTrainHistoryWindow': 8,
+    'trainHistoryIncrementIters': 2,
     'max_moves': 128,
     'num_stacked_observations': 8,
     'numWarmupIters': 2,  # Iterations where games are played randomly, 0 for none
@@ -164,10 +167,13 @@ class Coach:
                 print()
 
         except KeyboardInterrupt:
-            self.stop_agents.set()
-            self.saveIterationSamples(i)
-            self.processGameResults(const_i)
-            self.killSelfPlayAgents()
+            if self.completed.value != self.args.workers:
+                self.stop_agents.set()
+                if self.games_played.value > 0:
+                    self.saveIterationSamples(i)
+                    try: self.processGameResults(const_i)
+                    except ZeroDivisionError: pass
+                self.killSelfPlayAgents()
 
         self.writer.close()
 
@@ -247,9 +253,9 @@ class Coach:
         filename = folder + '/' + get_iter_file(iteration).replace('.pkl', '')
         if not os.path.exists(folder): os.makedirs(folder)
 
-        torch.save(data_tensor, filename + '-data.pkl')
-        torch.save(policy_tensor, filename + '-policy.pkl')
-        torch.save(value_tensor, filename + '-value.pkl')
+        torch.save(data_tensor, filename + '-data.pkl', pickle_protocol=5)
+        torch.save(policy_tensor, filename + '-policy.pkl', pickle_protocol=5)
+        torch.save(value_tensor, filename + '-value.pkl', pickle_protocol=5)
         del data_tensor
         del policy_tensor
         del value_tensor
@@ -282,23 +288,28 @@ class Coach:
         datasets = []
         # currentHistorySize = self.args.numItersForTrainExamplesHistory
         currentHistorySize = min(
-            max(4, (iteration + 4) // 2),
-            self.args.numItersForTrainExamplesHistory
+            max(
+                self.args.minTrainHistoryWindow,
+                (iteration + self.args.minTrainHistoryWindow) // self.args.trainHistoryIncrementIters
+            ),
+            self.args.maxTrainHistoryWindow
         )
         for i in range(max(1, iteration - currentHistorySize), iteration + 1):
             filename = self.args.data + '/' + self.args.run_name + '/' + get_iter_file(i).replace('.pkl', '')
             data_tensor = torch.load(filename + '-data.pkl')
             policy_tensor = torch.load(filename + '-policy.pkl')
             value_tensor = torch.load(filename + '-value.pkl')
-            datasets.append(TensorDataset(
-                data_tensor, policy_tensor, value_tensor))
+            datasets.append(
+                TensorDataset(data_tensor, policy_tensor, value_tensor)
+            )
 
         dataset = ConcatDataset(datasets)
         dataloader = DataLoader(dataset, batch_size=self.args.train_batch_size, shuffle=True,
                                 num_workers=self.args.workers, pin_memory=True)
+                                
+        train_steps = data_tensor.shape[0] // self.args.train_batch_size if self.args.autoTrainSteps else self.args.train_steps_per_iteration
 
-        l_pi, l_v = self.nnet.train(
-            dataloader, self.args.train_steps_per_iteration)
+        l_pi, l_v = self.nnet.train(dataloader, train_steps)
         self.writer.add_scalar('loss/policy', l_pi, iteration)
         self.writer.add_scalar('loss/value', l_v, iteration)
         self.writer.add_scalar('loss/total', l_pi + l_v, iteration)

@@ -21,7 +21,7 @@ def get_game_results(result_queue, game, get_index=None):
         elif result == -1:
             for p in game.getPlayers():
                 if game.getGameEnded(board, p) == 1:
-                    index = get_index(player, agent_id) if get_index else player
+                    index = get_index(p, agent_id) if get_index else p
                     wins[index] += 1
                     break
         else:
@@ -119,6 +119,15 @@ class SelfPlayAgent(mp.Process):
 
             with self.complete_count.get_lock():
                 self.complete_count.value += 1
+
+            del self.games
+            del self.canonical
+            del self.histories
+            del self.player
+            del self.turn
+            del self.next_reset
+            del self.mcts
+
             if not self._is_arena:
                 self.output_queue.close()
                 self.output_queue.join_thread()

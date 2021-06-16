@@ -20,7 +20,7 @@ args = dotdict({
     'train_steps_per_iteration': 512,
     # should preferably be a multiple of process_batch_size and workers
     'gamesPerIteration': 512,
-    'numItersForTrainExamplesHistory': 10,
+    '': 10,
     'max_moves': DRAW_MOVE_COUNT,
     'num_stacked_observations': NUM_STACKED_OBSERVATIONS,
     'numWarmupIters': 1,  # Iterations where games are played randomly, 0 for none
