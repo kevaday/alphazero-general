@@ -171,6 +171,7 @@ class Arena:
             value_tensors = []
             batch_ready = []
             batch_queues = []
+            stop_agents = mp.Event()
             ready_queue = mp.Queue()
             result_queue = mp.Queue()
             completed = mp.Value('i', 0)
@@ -207,7 +208,7 @@ class Arena:
                 agents.append(
                     SelfPlayAgent(i, self.game, ready_queue, batch_ready[i],
                                   input_tensors, policy_tensors[i], value_tensors[i], batch_queues[i],
-                                  result_queue, completed, games_played, self.args,
+                                  result_queue, completed, games_played, stop_agents, self.args,
                                   _is_arena=True, _player_order=player_to_index.copy()))
                 agents[i].daemon = True
                 agents[i].start()
@@ -259,6 +260,7 @@ class Arena:
                     )
                 bar.goto(size)
 
+            stop_agents.set()
             bar.update()
             bar.finish()
 

@@ -60,8 +60,8 @@ def memory_usage(vars):
 
 class SelfPlayAgent(mp.Process):
     def __init__(self, id, game, ready_queue, batch_ready, batch_tensor, policy_tensor,
-                 value_tensor, output_queue, result_queue, complete_count, games_played, args,
-                 _is_arena=False, _is_warmup=False, _player_order=None):
+                 value_tensor, output_queue, result_queue, complete_count, games_played,
+                 stop_event: mp.Event, args, _is_arena=False, _is_warmup=False, _player_order=None):
         super().__init__()
         self.id = id
         self.game = game
@@ -85,6 +85,7 @@ class SelfPlayAgent(mp.Process):
         self.mcts = []
         self.games_played = games_played
         self.complete_count = complete_count
+        self.stop_event = stop_event
         self.args = args
 
         self._is_arena = _is_arena
@@ -106,7 +107,7 @@ class SelfPlayAgent(mp.Process):
     def run(self):
         try:
             np.random.seed()
-            while self.games_played.value < self.args.gamesPerIteration:
+            while not self.stop_event.is_set() and self.games_played.value < self.args.gamesPerIteration:
                 self.generateCanonical()
                 self.fast = np.random.random_sample() < self.args.probFastSim
                 sims = self.args.numFastSims if self.fast else self.args.numMCTSSims \

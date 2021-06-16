@@ -70,10 +70,10 @@ args = get_args(
     numFastSims=10,
     numWarmupSims=10,
     probFastSim=0.7,
-    mctsResetThreshold=5,
+    mctsResetThreshold=DRAW_MOVE_COUNT // 4,
     tempThreshold=int(DRAW_MOVE_COUNT*0.8),
     
-    skipSelfPlayIters=0,
+    skipSelfPlayIters=None,
     max_gating_iters=3,
     numWarmupIters=1,
     baselineCompareFreq=2,
@@ -86,7 +86,7 @@ args = get_args(
     arena_batch_size=32,
     arenaCompare=64,
     train_steps_per_iteration=128,
-    gamesPerIteration=96,
+    gamesPerIteration=32*4,
     
     lr=0.01,
     num_channels=128,
