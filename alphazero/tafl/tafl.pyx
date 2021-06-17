@@ -11,7 +11,7 @@ import numpy as np
 
 NUM_PLAYERS = 2
 DRAW_MOVE_COUNT = 200
-NUM_STACKED_OBSERVATIONS = 8
+NUM_STACKED_OBSERVATIONS = 1
 NUM_BASE_CHANNELS = 5
 NUM_CHANNELS = NUM_BASE_CHANNELS * NUM_STACKED_OBSERVATIONS
 MAX_REPEATS = 3  # N-fold repetition loss
@@ -123,8 +123,8 @@ class TaflGame(Game):
             max_moves=max_moves,
             num_stacked_obs=num_stacked_obs,
             board=game_variant,
-            _store_past_states=True,
-            _max_past_states=max(num_stacked_obs, _TWO_MOVES * MAX_REPEATS + _ONE_MOVE)
+            _store_past_states=False,
+            # _max_past_states=max(num_stacked_obs, _TWO_MOVES * MAX_REPEATS + _ONE_MOVE)
         )
         self.board_size = (self.board.width, self.board.height)
         self.action_size = self.board.width * self.board.height * (self.board.width + self.board.height - 2)
@@ -150,9 +150,6 @@ class TaflGame(Game):
 
     def getPlayers(self) -> List[int]:
         return self.players
-
-    def getPlayerToPlay(self, board: CustomBoard) -> int:
-        return 2 - board.to_play().value
 
     def getObservationSize(self) -> tuple:
         # channels x width x height

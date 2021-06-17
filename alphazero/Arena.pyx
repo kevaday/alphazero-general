@@ -118,11 +118,6 @@ class Arena:
         turns = 0
 
         while True:
-            if verbose:
-                assert self.display
-                print("Turn ", str(turns), "Player ", str(to_play))
-                self.display(board)
-
             index = to_play if not player_to_index else player_to_index[to_play]
             action = self.players[index](board, turns)
             valids = self.game.getValidMoves(board, start_player)
@@ -141,8 +136,13 @@ class Arena:
                 if verbose:
                     assert self.display
                     print("Game over: Turn ", str(turns), "Result ", str(self.game.getGameEnded(board, start_player)))
-                    self.display(board)
+                    self.display(board, to_play)
                 return self.game.getGameEnded(board, start_player), to_play, board
+            
+            if verbose:
+                assert self.display
+                print("Turn ", str(turns), "Player ", str(to_play))
+                self.display(board, to_play)
 
             board = self.game.getCanonicalForm(board, next_player)
             to_play = self.game.getNextPlayer(to_play)

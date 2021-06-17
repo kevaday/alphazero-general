@@ -84,8 +84,13 @@ class Connect4Game(Game):
         return board.tostring()
 
 
-def display(board):
+def display(board, player=None):
+    if player is not None:
+        b = board * [1, -1][player]
+    else:
+        b = board
+    
     print(" -----------------------")
-    print(' '.join(map(str, range(len(board[0])))))
-    print(board)
+    #print(' '.join(map(str, range(len(board[0])))))
+    print(b)
     print(" -----------------------")

@@ -13,12 +13,10 @@ args = get_args(dotdict({
     'startIter': 1,
     'numIters': 1000,
     'numWarmupIters': 1,
-    'process_batch_size': 128,
-    'train_batch_size': 512,
-    'train_steps_per_iteration': 512,
+    'process_batch_size': 2048,
+    'train_batch_size': 128,
     # should preferably be a multiple of process_batch_size and workers
-    'gamesPerIteration': 4*128*mp.cpu_count(),
-    '': 100,
+    'gamesPerIteration': 2048*mp.cpu_count(),
     'symmetricSamples': True,
     'numMCTSSims': 50,
     'numFastSims': 5,
@@ -26,23 +24,32 @@ args = get_args(dotdict({
     'tempThreshold': 20,
     'temp': 1,
     'compareWithBaseline': True,
-    'arenaCompareBaseline': 16,
+    'arenaCompareBaseline': 32,
     'arenaCompare': 256,
+    'arena_batch_size': 64,
     'arenaTemp': 0.1,
     'arenaMCTS': True,
     'baselineCompareFreq': 1,
     'compareWithPast': True,
-    'pastCompareFreq': 3,
+    'pastCompareFreq': 1,
     'expertValueWeight': dotdict({
         'start': 0,
         'end': 0,
         'iterations': 35
     }),
-    'cpuct': 3,
-    'load_model': False,
-    'checkpoint': 'checkpoint',
-    'data': 'data',
-}))
+    'cpuct': 4,
+    'load_model': True,
+    }),
+    model_gating=False,
+    
+    lr=0.01,
+    num_channels=128,
+    depth=10,
+    value_head_channels=16,
+    policy_head_channels=16,
+    value_dense_layers=[512, 256],
+    policy_dense_layers=[512]
+)
 
 if __name__ == "__main__":
     g = Game()

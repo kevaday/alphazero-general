@@ -40,6 +40,7 @@ DEFAULT_ARGS = dotdict({
     'numFastSims': 15,
     'numWarmupSims': 50,
     'probFastSim': 0.75,
+    'mctsResetThreshold': None,
     'tempThreshold': 32,
     'temp': 1,
     'compareWithBaseline': True,
@@ -97,7 +98,8 @@ class Coach:
             self.args.startIter = len(networks)
             if self.args.startIter == 0:
                 self.nnet.save_checkpoint(
-                    folder=self.args.checkpoint + '/' + self.args.run_name, filename=get_iter_file(0))
+                    folder=self.args.checkpoint + '/' + self.args.run_name, filename=get_iter_file(0)
+                )
                 self.args.startIter = 1
 
             self.nnet.load_checkpoint(
@@ -374,7 +376,7 @@ class Coach:
         new_player = cls(self.game, self.nnet, args=self.args)
         nnplayer = new_player.play
 
-        print('PITTING AGAINST TESTER: ' + self.args.baselineTester.__name__)
+        print('PITTING AGAINST BASELINE: ' + self.args.baselineTester.__name__)
 
         players = [nnplayer]
         players.extend([test_player] * (len(self.game.getPlayers()) - 1))
@@ -382,5 +384,5 @@ class Coach:
         wins, draws, winrates = arena.play_games(self.args.arenaCompareBaseline)
         winrate = winrates[0]
 
-        print(f'NEW/TESTER WINS : {wins[0]} / {sum(wins[1:])} ; DRAWS : {draws}\n')
-        self.writer.add_scalar('win_rate/test', winrate, iteration)
+        print(f'NEW/BASELINE WINS : {wins[0]} / {sum(wins[1:])} ; DRAWS : {draws}\n')
+        self.writer.add_scalar('win_rate/baseline', winrate, iteration)
