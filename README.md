@@ -39,7 +39,7 @@ In order to increase performance, you can save your game engine files which may 
 
 `process_batch_size`: The size of the batches used for batching MCTS during self play. Equivalent to the number of games that should be played at the same time. In each worker. For exmaple, a batch size of 128 with 4 workers would create 128\*4 = 512 games to be played at the same time in batches.
 
-`numItersForTrainExamplesHistory`: The number of past iterations to load self play training data from.
+`minTrainHistoryWindow`, `maxTrainHistoryWindow`, `trainHistoryIncrementIters`: The number of past iterations to load self play training data from. Starts at min and increments once every `trainHistoryIncrementIters` iterations until it reaches max.
 
 `max_moves`: Number of moves in the game before the game ends in a tie (should be implemented manually for now in getGameEnded of your Game class, automatic draw is planned).
 
