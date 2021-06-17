@@ -62,12 +62,11 @@ class ResidualBlock(nn.Module):
 
 
 class NNetArchitecture(nn.Module):
-    def __init__(self, game, args):
+    def __init__(self, game_cls, args):
         super(NNetArchitecture, self).__init__()
         # game params
-        self.channels, self.board_x, self.board_y = game.getObservationSize()
-        self.action_size = game.getActionSize()
-        self.args = args
+        self.channels, self.board_x, self.board_y = game_cls.observation_size()
+        self.action_size = game_cls.action_size()
 
         self.conv1 = conv3x3(self.channels, args.num_channels)
         self.bn1 = nn.BatchNorm2d(args.num_channels)
@@ -91,18 +90,15 @@ class NNetArchitecture(nn.Module):
         self.pi_bn = nn.BatchNorm2d(args.policy_head_channels)
         self.pi_fc = mlp(
             self.board_x*self.board_y*args.policy_head_channels,
-            self.args.policy_dense_layers,
+            args.policy_dense_layers,
             self.action_size,
             activation=nn.Identity
         )
 
     def forward(self, s):
-        #                                                           s: batch_size x board_x x board_y
-        # batch_size x channels x board_x x board_y
+        # s: batch_size x num_channels x board_x x board_y
         s = s.view(-1, self.channels, self.board_x, self.board_y)
-        # batch_size x num_channels x board_x x board_y
         s = F.relu(self.bn1(self.conv1(s)))
-        # batch_size x num_channels x board_x x board_y
         s = self.resnet(s)
 
         v = self.v_conv(s)

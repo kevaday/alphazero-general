@@ -9,14 +9,14 @@ from alphazero.utils import dotdict
 
 args = get_args(dotdict({
     'run_name': 'connect4',
-    'workers': mp.cpu_count(),
+    'workers': 4,
     'startIter': 1,
     'numIters': 1000,
     'numWarmupIters': 1,
-    'process_batch_size': 2048,
+    'process_batch_size': 128,
     'train_batch_size': 128,
     # should preferably be a multiple of process_batch_size and workers
-    'gamesPerIteration': 2048*mp.cpu_count(),
+    'gamesPerIteration': 4*128*mp.cpu_count(),
     'symmetricSamples': True,
     'numMCTSSims': 50,
     'numFastSims': 5,
@@ -52,7 +52,6 @@ args = get_args(dotdict({
 )
 
 if __name__ == "__main__":
-    g = Game()
-    nnet = nn(g, args)
-    c = Coach(g, nnet, args)
+    nnet = nn(Game, args)
+    c = Coach(Game, nnet, args)
     c.learn()

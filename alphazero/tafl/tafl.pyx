@@ -194,6 +194,7 @@ class TaflGame(Game):
 
         player = self.getNextPlayer(board.current_player, player)
 
+        player = self.getNextPlayer(board.current_player, player)
         winner = self._get_player_int(winner)
         reward = int(winner == player)
         reward -= int(winner == self.getNextPlayer(player))

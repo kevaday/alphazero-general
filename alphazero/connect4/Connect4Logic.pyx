@@ -5,9 +5,8 @@
 # cython: overflowcheck=False
 # cython: initializedcheck=False
 # cython: cdivision=True
+# cython: auto_pickle=True
 
-cimport cython
-from collections import namedtuple
 import numpy as np
 
 
@@ -16,8 +15,8 @@ cdef class Board():
     Connect4 Board.
     """
 
-    cdef int width
     cdef int height
+    cdef int width
     cdef int length
     cdef int win_length
     cdef public int[:,:] pieces
@@ -29,6 +28,13 @@ cdef class Board():
         self.win_length = win_length
 
         self.pieces = np.zeros((self.height, self.width), dtype=np.intc)
+
+    def __getstate__(self):
+        return self.height, self.width, self.win_length, np.asarray(self.pieces)
+
+    def __setstate__(self, state):
+        self.height, self.width, self.win_length, pieces = state
+        self.pieces = np.asarray(pieces)
 
     def add_stone(self, int column, int player):
         "Create copy of board containing new stone."
@@ -96,10 +102,10 @@ cdef class Board():
 
         # draw has very little value.
         if sum(self.get_valid_moves()) == 0:
-            return (True, None)
+            return (True, 0)
 
         # Game is not ended yet.
-        return (False, None)
+        return (False, 0)
 
     def __str__(self):
         return str(np.asarray(self.pieces))

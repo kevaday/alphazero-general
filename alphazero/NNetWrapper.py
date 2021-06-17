@@ -6,20 +6,21 @@ from time import time
 import torch.optim as optim
 import numpy as np
 import torch
+import pickle
 import os
 
 
 class NNetWrapper(NeuralNet):
-    def __init__(self, game, args):
-        self.nnet = NNetArchitecture(game, args)
-        self.board_x, self.board_y = game.getBoardSize()
-        self.action_size = game.getActionSize()
+    def __init__(self, game_cls, args):
+        self.nnet = NNetArchitecture(game_cls, args)
+        self.action_size = game_cls.action_size()
         self.optimizer = optim.SGD(
-            self.nnet.parameters(), lr=args.lr, momentum=0.9, weight_decay=1e-3)
+            self.nnet.parameters(), lr=args.lr, momentum=0.9, weight_decay=1e-3
+        )
+
         # self.scheduler = optim.lr_scheduler.MultiStepLR(
-        #    self.optimizer, milestones=[200,400], gamma=0.1)
-        self.scheduler = optim.lr_scheduler.ReduceLROnPlateau(
-            self.optimizer, cooldown=10)
+        # self.optimizer, milestones=[200,400], gamma=0.1)
+        self.scheduler = optim.lr_scheduler.ReduceLROnPlateau(self.optimizer, cooldown=10)
 
         if args.cuda:
             self.nnet.cuda()
@@ -101,8 +102,6 @@ class NNetWrapper(NeuralNet):
         if self.args.cuda:
             board = board.contiguous().cuda()
         with torch.no_grad():
-            # board = board.view(1, self.board_x, self.board_y)
-
             self.nnet.eval()
             pi, v = self.nnet(board)
 
@@ -127,11 +126,12 @@ class NNetWrapper(NeuralNet):
         filepath = os.path.join(folder, filename)
         if not os.path.exists(folder):
             os.makedirs(folder)
+
         torch.save({
             'state_dict': self.nnet.state_dict(),
             'opt_state': self.optimizer.state_dict(),
             'sch_state': self.scheduler.state_dict()
-        }, filepath, pickle_protocol=5)
+        }, filepath, pickle_protocol=pickle.HIGHEST_PROTOCOL)
 
     def load_checkpoint(self, folder='checkpoint', filename='checkpoint.pth.tar'):
         # https://github.com/pytorch/examples/blob/master/imagenet/main.py#L98

@@ -13,6 +13,7 @@ from time import time
 
 import numpy as np
 import torch
+import pickle
 import os
 
 DEFAULT_ARGS = dotdict({
@@ -86,11 +87,11 @@ def get_args(args=None, **kwargs):
 
 
 class Coach:
-    def __init__(self, game, nnet, args):
+    def __init__(self, game_cls, nnet, args):
         np.random.seed()
-        self.game = game
+        self.game_cls = game_cls
         self.nnet = nnet
-        self.pnet = nnet.__class__(game, args)
+        self.pnet = nnet.__class__(game_cls, args)
         self.args = args
 
         if self.args.load_model:
@@ -184,13 +185,13 @@ class Coach:
         self.ready_queue = mp.Queue()
         for i in range(self.args.workers):
             self.input_tensors.append(torch.zeros(
-                [self.args.process_batch_size, *self.game.getObservationSize()]
+                [self.args.process_batch_size, *self.game_cls.observation_size()]
             ))
             self.input_tensors[i].pin_memory()
             self.input_tensors[i].share_memory_()
 
             self.policy_tensors.append(torch.zeros(
-                [self.args.process_batch_size, self.game.getActionSize()]
+                [self.args.process_batch_size, self.game_cls.action_size()]
             ))
             self.policy_tensors[i].pin_memory()
             self.policy_tensors[i].share_memory_()
@@ -201,7 +202,7 @@ class Coach:
             self.batch_ready.append(mp.Event())
 
             self.agents.append(
-                SelfPlayAgent(i, self.game, self.ready_queue, self.batch_ready[i],
+                SelfPlayAgent(i, self.game_cls(), self.ready_queue, self.batch_ready[i],
                               self.input_tensors[i], self.policy_tensors[i], self.value_tensors[i], self.file_queue,
                               self.result_queue, self.completed, self.games_played, self.stop_agents, self.args,
                               _is_warmup=self.warmup)
@@ -242,12 +243,12 @@ class Coach:
         num_samples = self.file_queue.qsize()
         print(f'Saving {num_samples} samples')
 
-        data_tensor = torch.zeros([num_samples, *self.game.getObservationSize()])
-        policy_tensor = torch.zeros([num_samples, self.game.getActionSize()])
+        data_tensor = torch.zeros([num_samples, *self.game_cls.observation_size()])
+        policy_tensor = torch.zeros([num_samples, self.game_cls.action_size()])
         value_tensor = torch.zeros([num_samples, 1])
         for i in range(num_samples):
             data, policy, value = self.file_queue.get()
-            data_tensor[i] = torch.from_numpy(data.astype(np.float32))
+            data_tensor[i] = torch.from_numpy(data)
             policy_tensor[i] = torch.tensor(policy)
             value_tensor[i, 0] = value
 
@@ -255,16 +256,16 @@ class Coach:
         filename = folder + '/' + get_iter_file(iteration).replace('.pkl', '')
         if not os.path.exists(folder): os.makedirs(folder)
 
-        torch.save(data_tensor, filename + '-data.pkl', pickle_protocol=5)
-        torch.save(policy_tensor, filename + '-policy.pkl', pickle_protocol=5)
-        torch.save(value_tensor, filename + '-value.pkl', pickle_protocol=5)
+        torch.save(data_tensor, filename + '-data.pkl', pickle_protocol=pickle.HIGHEST_PROTOCOL)
+        torch.save(policy_tensor, filename + '-policy.pkl', pickle_protocol=pickle.HIGHEST_PROTOCOL)
+        torch.save(value_tensor, filename + '-value.pkl', pickle_protocol=pickle.HIGHEST_PROTOCOL)
         del data_tensor
         del policy_tensor
         del value_tensor
 
     def processGameResults(self, iteration):
         num_games = self.result_queue.qsize()
-        wins, draws = get_game_results(self.result_queue, self.game)
+        wins, draws = get_game_results(self.result_queue, self.game_cls)
 
         for i in range(len(wins)):
             self.writer.add_scalar(f'win_rate/player{i}', (wins[i] + 0.5 * draws) / num_games, iteration)
@@ -338,15 +339,13 @@ class Coach:
             pplayer = self.pnet.process
         else:
             cls = MCTSPlayer if self.args.arenaMCTS else NNPlayer
-            new_player = cls(self.game, self.nnet, args=self.args)
-            past_player = cls(self.game, self.pnet, args=self.args)
-            nplayer = new_player.play
-            pplayer = past_player.play
+            nplayer = cls(self.nnet, args=self.args)
+            pplayer = cls(self.pnet, args=self.args)
 
         players = [nplayer]
-        players.extend([pplayer] * (len(self.game.getPlayers()) - 1))
+        players.extend([pplayer] * (len(self.game_cls.get_players()) - 1))
 
-        arena = Arena(players, self.game, use_batched_mcts=self.args.arenaBatched, args=self.args)
+        arena = Arena(players, self.game_cls, use_batched_mcts=self.args.arenaBatched, args=self.args)
         wins, draws, winrates = arena.play_games(self.args.arenaCompare)
         winrate = winrates[0]
 
@@ -370,17 +369,16 @@ class Coach:
             self.gating_counter = 0
 
     def compareToBaseline(self, iteration):
-        test_player = self.args.baselineTester(self.game).play
+        test_player = self.args.baselineTester()
 
         cls = MCTSPlayer if self.args.arenaMCTS else NNPlayer
-        new_player = cls(self.game, self.nnet, args=self.args)
-        nnplayer = new_player.play
+        nnplayer = cls(self.nnet, args=self.args)
 
         print('PITTING AGAINST BASELINE: ' + self.args.baselineTester.__name__)
 
         players = [nnplayer]
-        players.extend([test_player] * (len(self.game.getPlayers()) - 1))
-        arena = Arena(players, self.game, use_batched_mcts=False, args=self.args)
+        players.extend([test_player] * (len(self.game_cls.get_players()) - 1))
+        arena = Arena(players, self.game_cls, use_batched_mcts=False, args=self.args)
         wins, draws, winrates = arena.play_games(self.args.arenaCompareBaseline)
         winrate = winrates[0]
 

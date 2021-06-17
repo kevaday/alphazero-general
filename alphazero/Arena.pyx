@@ -1,12 +1,11 @@
 # cython: language_level=3
 
-from alphazero.Game import Game
-from alphazero.GenericPlayers import BasePlayer
+from alphazero.Game import GameState
 from alphazero.SelfPlayAgent import SelfPlayAgent, get_game_results
 from alphazero.pytorch_classification.utils import Bar, AverageMeter
 from alphazero.utils import dotdict
 
-from typing import Callable, List, Tuple, Any
+from typing import Callable, List, Tuple
 from queue import Empty
 from time import time
 
@@ -47,7 +46,7 @@ class Arena:
     def __init__(
             self,
             players: List[Callable],
-            game: Game,
+            game_cls,
             use_batched_mcts=True,
             display: Callable = None,
             args: dotdict = None
@@ -63,13 +62,14 @@ class Arena:
         see othello/OthelloPlayers.py for an example. See pit.py for pitting
         human players/other baselines with each other.
         """
-        if len(players) != len(game.getPlayers()):
+        num_players = len(game_cls.get_players())
+        if len(players) != num_players:
             raise ValueError('Argument `players` must have the same amount of players as the game supports. '
-                             f'Got {len(players)} player agents, while the game requires {len(self.game.getPlayers())}')
+                             f'Got {len(players)} player agents, while the game requires {num_players}')
 
         self.__players = None
         self.players = players
-        self.game = game
+        self.game_cls = game_cls
         self.use_batched_mcts = use_batched_mcts
         self.display = display
         self.args = args.copy()
@@ -102,51 +102,40 @@ class Arena:
         [player.update_winrate(self.draws, num_games) for player in self.players]
         self.winrates = [player.winrate for player in sorted(self.players, key=lambda p: p.index)]
 
-    def play_game(self, verbose=False, player_to_index: list = None) -> Tuple[int, int, Any]:
+    def play_game(self, verbose=False, _player_to_index: dict = None) -> Tuple[GameState, int]:
         """
         Executes one episode of a game.
 
         Returns:
-            result: the result of the game (based on last canonical board)
-            cur_player: the last player to play in the game
-            board: the last canonical state/board
+            state: the last state in the game
+            result: the value of the game result (based on last state)
         """
-        start_player = self.game.getPlayers()[0]
-        next_player = start_player
-        to_play = start_player
-        board = self.game.getInitBoard()
+        if verbose: assert self.display
+
+        state = self.game_cls()
         turns = 0
 
         while True:
-            index = to_play if not player_to_index else player_to_index[to_play]
-            action = self.players[index](board, turns)
-            valids = self.game.getValidMoves(board, start_player)
-
-            if valids[action] == 0:
-                print()
-                print(action, index, next_player, to_play, turns)
-                print(valids)
-                print()
-                assert valids[action] > 0
-
-            board, next_player = self.game.getNextState(board, start_player, action)
-            result = self.game.getGameEnded(board, start_player)
-
-            if result != 0:
-                if verbose:
-                    assert self.display
-                    print("Game over: Turn ", str(turns), "Result ", str(self.game.getGameEnded(board, start_player)))
-                    self.display(board, to_play)
-                return self.game.getGameEnded(board, start_player), to_play, board
-            
             if verbose:
-                assert self.display
-                print("Turn ", str(turns), "Player ", str(to_play))
-                self.display(board, to_play)
+                print("Turn ", str(turns), "Player ", str(state.current_player()))
+                self.display(state)
 
-            board = self.game.getCanonicalForm(board, next_player)
-            to_play = self.game.getNextPlayer(to_play)
+            index = state.current_player() if not _player_to_index else _player_to_index[state.current_player()]
+            action = self.players[index](state, turns)
+
+            valids = state.valid_moves()
+            assert valids[action] > 0, ' '.join(map(str, [action, index, state.current_player(), turns, valids]))
+
+            state.play_action(action)
+            game_over, value = state.win_state()
             turns += 1
+
+            if game_over:
+                if verbose:
+                    print("Game over: Turn ", str(turns), "Result ", str(value))
+                    self.display(state)
+
+                return state, value
 
     def play_games(self, num, verbose=False) -> Tuple[List[int], int, List[int]]:
         """
@@ -164,6 +153,15 @@ class Arena:
         end = time()
         self.__reset_counts()
 
+        players = self.game_cls.get_players().copy()
+
+        def get_player_order() -> dict:
+            if len(players) == 2:
+                players.reverse()
+            else:
+                random.shuffle(players)
+            return {p: i for i, p in enumerate(players)}
+
         if self.use_batched_mcts:
             self.args.gamesPerIteration = num
             agents = []
@@ -176,24 +174,17 @@ class Arena:
             result_queue = mp.Queue()
             completed = mp.Value('i', 0)
             games_played = mp.Value('i', 0)
-            player_to_index = self.game.getPlayers().copy()
 
             self.args.expertValueWeight.current = self.args.expertValueWeight.start
             # if self.args.workers >= mp.cpu_count():
             #    self.args.workers = mp.cpu_count() - 1
-
-            def get_player_order():
-                if len(player_to_index) == 2:
-                    player_to_index.reverse()
-                else:
-                    random.shuffle(player_to_index)
 
             for i in range(self.args.workers):
                 input_tensors = [[] for _ in player_to_index]
                 batch_queues.append(mp.Queue())
 
                 policy_tensors.append(torch.zeros(
-                    [self.args.arena_batch_size, self.game.getActionSize()]
+                    [self.args.arena_batch_size, self.game_cls.action_size()]
                 ))
                 policy_tensors[i].pin_memory()
                 policy_tensors[i].share_memory_()
@@ -203,10 +194,10 @@ class Arena:
                 value_tensors[i].share_memory_()
 
                 batch_ready.append(mp.Event())
-                get_player_order()
+                player_to_index = get_player_order()
 
                 agents.append(
-                    SelfPlayAgent(i, self.game, ready_queue, batch_ready[i],
+                    SelfPlayAgent(i, self.game_cls(), ready_queue, batch_ready[i],
                                   input_tensors, policy_tensors[i], value_tensors[i], batch_queues[i],
                                   result_queue, completed, games_played, stop_agents, self.args,
                                   _is_arena=True, _player_order=player_to_index.copy()))
@@ -224,7 +215,7 @@ class Arena:
                     policy = []
                     value = []
                     data = batch_queues[id].get()
-                    for player in self.game.getPlayers():
+                    for player in range(len(self.players)):
                         batch = data[player]
                         if isinstance(batch, torch.Tensor):
                             p, v = self.players[player](batch)
@@ -245,7 +236,7 @@ class Arena:
 
                 wins, draws = get_game_results(
                     result_queue,
-                    self.game,
+                    self.game_cls,
                     get_index=lambda p, i: agents[i].player_to_index[p]
                 )
                 for i, w in enumerate(wins):
@@ -271,38 +262,16 @@ class Arena:
                 del batch_ready[0]
 
         else:
-            player_to_index = self.game.getPlayers().copy()
-            
-            def update_players():
-                # Change up the order of the players for even game
-                if len(player_to_index) == 2:
-                    player_to_index.reverse()
-                else:
-                    random.shuffle(player_to_index)
-
             for eps in range(1, num + 1):
                 # Get a new lookup for self.players, randomized or reversed from original
-                update_players()
+                player_to_index = get_player_order()
 
                 # Play a single game with the current player order
-                result, player, board = self.play_game(verbose, player_to_index)
+                _, value = self.play_game(verbose, player_to_index)
 
                 # Bookkeeping + plot progress
-                if result == 1:
-                    self.players[player_to_index[player]].add_win()
-                elif result == -1:
-                    p = player
-                    for _ in range(len(player_to_index)-1):
-                        p = self.game.getNextPlayer(p)
-                        b = self.game.getCanonicalForm(board, player - p)
-                        if self.game.getGameEnded(b, 0) == 1:
-                            self.players[player_to_index[p]].add_win()
-                            break
-                    else:
-                        print(board.current_player)
-                        raise RuntimeError(
-                            f'Winner not found after game. Result={result}, player={player}, board:\n{board}'
-                        )
+                if value != 0:
+                    self.players[player_to_index[value]].add_win()
                 else:
                     self.draws += 1
 

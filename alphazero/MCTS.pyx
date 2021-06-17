@@ -1,287 +1,191 @@
 # cython: language_level=3
-# cython: linetrace=True
-# cython: profile=True
-# cython: binding=True
+# cython: boundscheck=False
+# cython: wraparound=False
+# cython: nonecheck=False
+# cython: overflowcheck=False
+# cython: initializedcheck=False
+# cython: cdivision=True
+# cython: auto_pickle=True
 
-import math
+from libc.math cimport sqrt
+
 import numpy as np
+import cython
 
-EPS = 1e-8
+
+def rebuild_node(children, a, cpuct, e, q, n, p, player):
+    childs = []
+    for child_state in children:
+        rebuild, args = child_state[0], child_state[1:]
+        child = rebuild(*args)
+        childs.append(child)
+
+    node = Node(a, cpuct)
+    node._children = childs
+    node.a = a
+    node.cpuct = cpuct
+    node.e = e
+    node.q = q
+    node.n = n
+    node.p = p
+    node.player = player
+
+    return node
 
 
-class MCTS():
-    """
-    This class handles the MCTS tree.
-    """
+@cython.auto_pickle(True)
+cdef class Node:
+    cdef public list _children
+    cdef public int a
+    cdef public float cpuct
+    cdef public (bint, int) e
+    cdef public float q
+    cdef public int n
+    cdef public float p
+    cdef public int player
 
-    def __init__(self, game, nnet, args):
-        self.game = game
-        self.nnet = nnet
-        self.args = args
-        self.reset()
+    def __init__(self, int action, float cpuct):
+        self._children = []
+        self.a = action
+        self.cpuct = cpuct
+        self.e = (False, 0)
+        self.q = 0
+        self.n = 0
+        self.p = 0
+        self.player = 0
 
-    def reset(self):
-        self.Qsa = {}  # stores Q values for s,a (as defined in the paper)
-        self.Nsa = {}  # stores #times edge s,a was visited
-        self.Ns = {}  # stores #times board s was visited
-        self.Ps = {}  # stores initial policy (returned by neural net)
+    def __reduce__(self):
+        return rebuild_node, ([n.__reduce__() for n in self._children], self.a, self.cpuct, self.e, self.q, self.n, self.p, self.player)
 
-        self.Es = {}  # stores game.getGameEnded ended for board s
-        self.Vs = {}  # stores game.getValidMoves for board s
+    cdef add_children(self, int[:] v):
+        cdef Py_ssize_t a
+        for a in range(len(v)):
+            if v[a] == 1:
+                self._children.append(Node(a, self.cpuct))
+        # shuffle
 
-        self.mode = 'leaf'
-        self.path = []
-        self.v = 0
-        self.depth = 0
+    cdef update_policy(self, float[:] pi):
+        cdef Node c
+        for c in self._children:
+            c.p = pi[c.a]
 
-    def getActionProb(self, canonicalBoard, temp=1):
-        """
-        This function performs numMCTSSims simulations of MCTS starting from
-        canonicalBoard.
+    cdef uct(self, float sqrtParentN):
+        uct = self.q + self.cpuct * self.p * sqrtParentN/(1+self.n)
+        return uct
 
-        Returns:
-            probs: a policy vector where the probability of the ith action is
-                   proportional to Nsa[(s,a)]**(1./temp)
-        """
-        max_depth = 0
-        for i in range(self.args.numMCTSSims):
-            self.depth = 0
-            self.search(canonicalBoard)
-            if self.depth > max_depth:
-                max_depth = self.depth
+    cdef best_child(self):
+        child = None
+        curBest = -float('inf')
+        sqrtN = sqrt(self.n)
+        cdef Node c
+        for c in self._children:
+            uct = c.uct(sqrtN)
+            if uct > curBest:
+                curBest = uct
+                child = c
+        return child
 
-        self.depth = max_depth
 
-        s = self.game.stringRepresentation(canonicalBoard)
-        counts = [self.Nsa[(s, a)] if (
-            s, a) in self.Nsa else 0 for a in range(self.game.getActionSize())]
+def rebuild_mcts(cpuct, root, curnode, path):
+    mcts = MCTS()
+    mcts.cpuct = cpuct
+    mcts._root = root
+    mcts._curnode = curnode
+    mcts.path = path
+    return mcts
 
-        if temp == 0:
-            bestA = np.argmax(counts)
-            probs = [0] * len(counts)
-            probs[bestA] = 1
-            return probs
 
-        try:
-            counts = [x ** (1. / temp) for x in counts]
-            probs = [x / float(sum(counts)) for x in counts]
-            return probs
-        except OverflowError:
-            bestA = np.argmax(counts)
-            probs = [0] * len(counts)
-            probs[bestA] = 1
-            return probs
-
-    def getExpertProb(self, canonicalBoard, temp=1, prune=False):
-        s = self.game.stringRepresentation(canonicalBoard)
-
-        counts = [self.Nsa[(s, a)] if (
-            s, a) in self.Nsa else 0 for a in range(self.game.getActionSize())]
-
-        if prune:
-            bestA = np.argmax(counts)
-            qVals = self.Qsa[(s, bestA)] if (s, bestA) in self.Nsa else 0
-            u_max = qVals + self.args.cpuct * \
-                self.Ps[s][bestA] * math.sqrt(self.Ns[s]) / (counts[bestA] + 1)
-            for a in range(self.game.getActionSize()):
-                if a == bestA:
-                    continue
-                if counts[a] <= 0:
-                    continue
-                desired = math.ceil(math.sqrt(2*self.Ps[s][a]*self.Ns[s]))
-                u_const = qVals + self.args.cpuct * \
-                    self.Ps[s][a] * math.sqrt(self.Ns[s])
-                for _ in range(desired):
-                    if counts[a] <= 0:
-                        break
-                    if u_const / counts[a] < u_max:
-                        counts[a] -= 1
-
-        if temp == 0:
-            bestA = np.argmax(counts)
-            probs = [0] * len(counts)
-            probs[bestA] = 1
-            return probs
-
-        try:
-            counts = [x ** (1. / temp) for x in counts]
-            probs = [x / float(sum(counts)) for x in counts]
-            return probs
-        except OverflowError:
-            bestA = np.argmax(counts)
-            probs = [0] * len(counts)
-            probs[bestA] = 1
-            return probs
-
-    def getExpertValue(self, canonicalBoard):
-        s = self.game.stringRepresentation(canonicalBoard)
-        values = [self.Qsa[(s, a)] if (
-            s, a) in self.Qsa else 0 for a in range(self.game.getActionSize())]
-        return np.max(values)
-
-    def processResults(self, pi, value):
-        if self.mode == 'leaf':
-            s = self.path.pop()[0]
-            self.Ps[s] = pi
-            self.Ps[s] = self.Ps[s] * self.Vs[s]  # masking invalid moves
-            sum_Ps_s = np.sum(self.Ps[s])
-            if sum_Ps_s > 0:
-                self.Ps[s] /= sum_Ps_s  # renormalize
-            else:
-                # if all valid moves were masked make all valid moves equally probable
-
-                # NB! All valid moves may be masked if either your NNet architecture is insufficient or you've get
-                # overfitting or something else. If you have got dozens or hundreds of these messages you should pay
-                # attention to your NNet and/or training process.
-                print("All valid moves were masked, do workaround.")
-                self.Ps[s] = self.Ps[s] + self.Vs[s]
-                self.Ps[s] /= np.sum(self.Ps[s])
-
-            self.Ns[s] = 0
-            self.v = -value
-
-        self.path.reverse()
-        for s, a in self.path:
-            if (s, a) in self.Qsa:
-                self.Qsa[(s, a)] = (self.Nsa[(s, a)] *
-                                    self.Qsa[(s, a)] + self.v) / (self.Nsa[(s, a)] + 1)
-                self.Nsa[(s, a)] += 1
-
-            else:
-                self.Qsa[(s, a)] = self.v
-                self.Nsa[(s, a)] = 1
-
-            self.Ns[s] += 1
-            self.v *= -1
+@cython.auto_pickle(True)
+cdef class MCTS:
+    cdef public float cpuct
+    cdef public Node _root
+    cdef public Node _curnode
+    cdef public list path
+    def __init__(self, float cpuct=2.0):
+        self.cpuct = cpuct
+        self._root = Node(-1, cpuct)
+        self._curnode = self._root
         self.path = []
 
-    def findLeafToProcess(self, canonicalBoard, isRoot):
-        s = self.game.stringRepresentation(canonicalBoard)
+    def __reduce__(self):
+        return rebuild_mcts, (self.cpuct, self._root, self._curnode, self.path)
 
-        if s not in self.Es:
-            self.Es[s] = self.game.getGameEnded(canonicalBoard, 0)
-        if self.Es[s] != 0:
-            # terminal node
-            self.mode = 'terminal'
-            self.v = -self.Es[s]
-            return None
+    cpdef update_root(self, gs, int a):
+        if self._root._children == []:
+            self._root.add_children(gs.valid_moves())
+        cdef Node c
+        for c in self._root._children:
+            if c.a == a:
+                self._root = c
+                return
 
-        if s not in self.Ps:
-            # leaf node
-            self.Vs[s] = self.game.getValidMoves(canonicalBoard, 0)
-            self.mode = 'leaf'
-            self.path.append((s, None))
-            return canonicalBoard
+        raise ValueError(f'Invalid action while updating root: {c.a}')
 
-        valids = self.Vs[s]
-        cur_best = -float('inf')
-        best_act = -1
+    cpdef find_leaf(self, gs):
+        self._curnode = self._root
+        gs = gs.clone()
+        while self._curnode.n > 0 and not self._curnode.e[0]:
+            self.path.append(self._curnode)
+            self._curnode = self._curnode.best_child()
+            gs.play_action(self._curnode.a)
 
-        # pick the action with the highest upper confidence bound
-        for a in range(self.game.getActionSize()):
-            if valids[a]:
-                if (s, a) in self.Qsa:
-                    # prioritize under explored options.
-                    if isRoot and self.Nsa[(s, a)] < math.sqrt(2*self.Ps[s][a]*self.Ns[s]):
-                        best_act = a
-                        break
-                    u = self.Qsa[(s, a)] + self.args.cpuct * self.Ps[s][a] * math.sqrt(self.Ns[s]) / (
-                        1 + self.Nsa[(s, a)])
-                else:
-                    u = self.args.cpuct * \
-                        self.Ps[s][a] * math.sqrt(self.Ns[s] + EPS)  # Q = 0 ?
+        if self._curnode.n == 0:
+            ws = gs.win_state()
+            self._curnode.player = gs.current_player()
+            self._curnode.e = (ws[0], ws[1]*self._curnode.player)
+            self._curnode.add_children(gs.valid_moves())
 
-                if u > cur_best:
-                    cur_best = u
-                    best_act = a
+        return gs
 
-        a = best_act
-        next_s, next_player = self.game.getNextState(canonicalBoard, 0, a)
-        next_s = self.game.getCanonicalForm(next_s, next_player, copy=False)
-        self.path.append((s, a))
-        return self.findLeafToProcess(next_s, False)
-
-    def search(self, canonicalBoard):
-        """
-        This function performs one iteration of MCTS. It is recursively called
-        till a leaf node is found. The action chosen at each node is one that
-        has the maximum upper confidence bound as in the paper.
-
-        Once a leaf node is found, the neural network is called to return an
-        initial policy P and a value v for the state. This value is propogated
-        up the search path. In case the leaf node is a terminal state, the
-        outcome is propogated up the search path. The values of Ns, Nsa, Qsa are
-        updated.
-
-        NOTE: the return values are the negative of the value of the current
-        state. This is done since v is in [-1,1] and if v is the value of a
-        state for the current player, then its value is -v for the other player.
-
-        Returns:
-            v: the negative of the value of the current canonicalBoard
-        """
-        self.depth += 1
-        s = self.game.stringRepresentation(canonicalBoard)
-
-        if s not in self.Es:
-            self.Es[s] = self.game.getGameEnded(canonicalBoard, 0)
-        if self.Es[s] != 0:
-            # terminal node
-            return -self.Es[s]
-
-        if s not in self.Ps:
-            # leaf node
-            self.Ps[s], v = self.nnet.predict(canonicalBoard)
-            valids = self.game.getValidMoves(canonicalBoard, 0)
-            self.Ps[s] = self.Ps[s] * valids  # masking invalid moves
-            sum_Ps_s = np.sum(self.Ps[s])
-            if sum_Ps_s > 0:
-                self.Ps[s] /= sum_Ps_s  # renormalize
-            else:
-                # if all valid moves were masked make all valid moves equally probable
-
-                # NB! All valid moves may be masked if either your NNet architecture is insufficient or you've get overfitting or something else.
-                # If you have got dozens or hundreds of these messages you should pay attention to your NNet and/or training process.
-                print("All valid moves were masked, do workaround.")
-                self.Ps[s] = self.Ps[s] + valids
-                self.Ps[s] /= np.sum(self.Ps[s])
-
-            self.Vs[s] = valids
-            self.Ns[s] = 0
-            return -v
-
-        valids = self.Vs[s]
-        cur_best = -float('inf')
-        best_act = -1
-
-        # pick the action with the highest upper confidence bound
-        for a in range(self.game.getActionSize()):
-            if valids[a]:
-                if (s, a) in self.Qsa:
-                    u = self.Qsa[(s, a)] + self.args.cpuct * self.Ps[s][a] * math.sqrt(self.Ns[s]) / (
-                        1 + self.Nsa[(s, a)])
-                else:
-                    u = self.args.cpuct * \
-                        self.Ps[s][a] * math.sqrt(self.Ns[s] + EPS)  # Q = 0 ?
-
-                if u > cur_best:
-                    cur_best = u
-                    best_act = a
-
-        a = best_act
-        next_s, next_player = self.game.getNextState(canonicalBoard, 0, a)
-        next_s = self.game.getCanonicalForm(next_s, next_player, copy=False)
-
-        v = self.search(next_s)
-
-        if (s, a) in self.Qsa:
-            self.Qsa[(s, a)] = (self.Nsa[(s, a)] *
-                                self.Qsa[(s, a)] + v) / (self.Nsa[(s, a)] + 1)
-            self.Nsa[(s, a)] += 1
-
+    cpdef process_results(self, gs, float value, float[:] pi):
+        if self._curnode.e[0]:
+            value = self._curnode.e[1]
         else:
-            self.Qsa[(s, a)] = v
-            self.Nsa[(s, a)] = 1
+            self._curnode.update_policy(pi)
 
-        self.Ns[s] += 1
-        return -v
+        player = gs.current_player()
+        while self.path:
+            parent = self.path.pop()
+            v = value if parent.player == player else -value
+            self._curnode.q = (self._curnode.q * self._curnode.n + v) / (self._curnode.n + 1)
+            self._curnode.n += 1
+            self._curnode = parent
+
+        self._root.n += 1
+
+    cpdef counts(self, gs):
+        cdef int[:] counts = np.zeros(gs.action_size(), dtype=np.intc)
+        cdef Node c
+        for c in self._root._children:
+            counts[c.a] = c.n
+        return counts
+
+    cpdef probs(self, gs, temp=1):
+        counts = np.zeros(gs.action_size())
+        cdef Node c
+        for c in self._root._children:
+            counts[c.a] = c.n
+
+        if temp == 0:
+            bestA = np.argmax(counts)
+            probs = np.zeros_like(counts)
+            probs[bestA] = 1
+            return probs
+
+        try:
+            probs = counts ** (1.0/temp)
+            probs /= np.sum(probs)
+            return probs
+        except OverflowError:
+            bestA = np.argmax(counts)
+            probs = np.zeros_like(counts)
+            probs[bestA] = 1
+            return probs
+
+    cpdef value(self):
+        value = None
+        cdef Node c
+        for c in self._root._children:
+            if value == None or c.q > value:
+                value = c.q
+        return value

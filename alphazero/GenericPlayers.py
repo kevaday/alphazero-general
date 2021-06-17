@@ -1,5 +1,5 @@
 from alphazero.MCTS import MCTS
-from alphazero.Game import Game
+from alphazero.Game import GameState
 from alphazero.NNetWrapper import NNetWrapper
 from alphazero.utils import dotdict
 
@@ -9,28 +9,24 @@ import numpy as np
 
 
 class BasePlayer(ABC):
-    def __init__(self, game: Game):
-        self.game = game
+    def __call__(self, *args, **kwargs):
+        return self.play(*args, **kwargs)
 
     @abstractmethod
-    def play(self, board, turn: int) -> int:
+    def play(self, state: GameState, turn: int) -> int:
         pass
 
 
 class RandomPlayer(BasePlayer):
-    def __init__(self, game):
-        super().__init__(game)
-
-    def play(self, board, turn):
-        valids = self.game.getValidMoves(board, self.game.getPlayers()[0])
+    def play(self, state, turn):
+        valids = state.valid_moves()
         valids = valids / np.sum(valids)
-        a = np.random.choice(self.game.getActionSize(), p=valids)
+        a = np.random.choice(state.action_size(), p=valids)
         return a
 
 
 class NNPlayer(BasePlayer):
-    def __init__(self, game, nn, temp=0, temp_threshold=10, args: dotdict = None):
-        super().__init__(game)
+    def __init__(self, nn, temp=0, temp_threshold=10, args: dotdict = None):
         self.nn = nn
         self.temp = temp
         self.temp_threshold = temp_threshold
@@ -40,9 +36,9 @@ class NNPlayer(BasePlayer):
         self.temp = args.arenaTemp
         self.temp_threshold = args.tempThreshold
 
-    def play(self, board, turn: int) -> int:
-        policy, _ = self.nn.predict(board)
-        valids = self.game.getValidMoves(board, self.game.getPlayers()[0])
+    def play(self, state, turn: int) -> int:
+        policy, _ = self.nn.predict(state)
+        valids = state.valid_moves()
         options = policy * valids
         temp = 1 if turn <= self.temp_threshold else self.temp
         if temp == 0:
@@ -54,7 +50,7 @@ class NNPlayer(BasePlayer):
             probs /= np.sum(probs)
 
         choice = np.random.choice(
-            np.arange(self.game.getActionSize()), p=probs
+            np.arange(state.action_size()), p=probs
         )
 
         if valids[choice] == 0:
@@ -69,15 +65,13 @@ class NNPlayer(BasePlayer):
 
 
 class MCTSPlayer(BasePlayer):
-    def __init__(self, game, nn: NNetWrapper, temp=0, temp_threshold=10, num_sims=50, cpuct=2,
-                 reset_mcts=True, verbose=False, args: dotdict = None):
-        super().__init__(game)
+    def __init__(self, nn: NNetWrapper, temp=0, temp_threshold=10, num_sims=50, cpuct=2,
+                 verbose=False, args: dotdict = None):
         self.nn = nn
         self.temp = temp
         self.temp_threshold = temp_threshold
         self.num_sims = num_sims
         self.cpuct = cpuct
-        self.reset_mcts = reset_mcts
         self.verbose = verbose
         self.args = args
         self.mcts = None
@@ -98,15 +92,15 @@ class MCTSPlayer(BasePlayer):
                 'cpuct': self.cpuct
             })
 
-        self.mcts = MCTS(self.game, self.nn, self.args)
+        self.mcts = MCTS(self.args.cpuct)
 
-    def play(self, board, turn) -> int:
-        if self.reset_mcts and turn <= 2:
-            self.mcts.reset()
-
+    def play(self, state, turn) -> int:
         temp = 1 if turn <= self.temp_threshold else self.temp
-        policy = self.mcts.getActionProb(board, temp=temp)
+        policy = self.mcts.probs(state, temp)
         
-        if self.verbose: print('max tree depth:', self.mcts.depth)
+        if self.verbose: print('max tree depth:', len(self.mcts.path))
 
-        return np.random.choice(len(policy), p=policy)
+        action = np.random.choice(len(policy), p=policy)
+        self.mcts.update_root(state, action)
+
+        return action

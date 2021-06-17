@@ -1,153 +1,78 @@
 from abc import ABC, abstractmethod
 from typing import List, Tuple, Any
 
+PLAYERS = [1, -1]
 
-class Game(ABC):
-    """
-    This class specifies the base Game class. To define your own game, subclass
-    this class and implement the functions below. This works when the game is
-    two-player, adversarial and turn-based.
 
-    Use 1 for player1 and -1 for player2.
+class GameState(ABC):
+    def __init__(self, board):
+        self._board = board
+        self._player = self.get_players()[0]
 
-    See othello/OthelloGame.py for an example implementation.
-    """
     @abstractmethod
-    def getInitBoard(self):
-        """
-        Returns:
-            startBoard: a representation of the board (ideally this is the form
-                        that will be the input to your neural network)
-        """
+    def __eq__(self, other: 'GameState') -> bool:
+        """Compare the current game state to an other"""
         pass
 
     @abstractmethod
-    def getBoardSize(self) -> Tuple[int, int]:
-        """
-        Returns:
-            (x,y): a tuple of board dimensions
-        """
+    def clone(self) -> 'GameState':
+        """Return a new clone of the game state, independent of the current one."""
         pass
 
+    @staticmethod
     @abstractmethod
-    def getActionSize(self) -> int:
-        """
-        Returns:
-            actionSize: number of all possible actions
-        """
+    def action_size() -> int:
+        """The size of the action space for the game"""
         pass
 
+    @staticmethod
     @abstractmethod
-    def getPlayers(self) -> List[int]:
+    def observation_size() -> Tuple[int, int, int]:
         """
         Returns:
-            players: a list of the players in the game.
-                     Should be list(range(N)) where N is the
-                     constant number of players in the game.
-        """
-        pass
-
-    def getNextPlayer(self, currentPlayer: int, turns: int = 1) -> int:
-        """
-        A useful method to get the next player in a game for linear turns.
-        Inputs:
-            currentPlayer: the current player playing in the game
-            turns: the number of turns in the future for getting the
-                   next player to play
-        Returns:
-            nextPlayer: the player number who's turn it will be from
-                        the `currentPlayer` after `turns` number of turns
-                        in the game.
-        """
-        return (currentPlayer + turns) % len(self.getPlayers())
-
-    @abstractmethod
-    def getObservationSize(self) -> Tuple[int, int, int]:
-        """
-        Returns:
-            observationSize: the shape of observations of the current state,
+            observation_size: the shape of observations of the current state,
                              must be in the form channels x width x height.
                              If only one plane is needed for observation, use 1 for channels.
         """
         pass
 
     @abstractmethod
-    def getNextState(self, board, player: int, action: int, copy=True) -> Tuple[Any, int]:
-        """
-        Input:
-            board: current board
-            player: current player (from the range given by getPlayers method)
-            action: action taken by current player
-            copy: whether or not to create a new copy of `board` for performance optimization.
+    def valid_moves(self):
+        """Returns a numpy binary array containing zeros for invalid moves and ones for valids."""
+        pass
 
-        Returns:
-            nextBoard: board after applying action
-            nextPlayer: player who plays in the next turn (should be -player)
+    @staticmethod
+    def get_players() -> List[int]:
         """
+        Returns:
+            players: a list of the players in the game.
+                     Should be list(range(N)) where N is the
+                     constant number of players in the game.
+        """
+        return PLAYERS
+
+    def current_player(self) -> int:
+        return self._player
+
+    @abstractmethod
+    def play_action(self, action: int) -> None:
+        """Play the action in the current state given by argument action."""
         pass
 
     @abstractmethod
-    def getValidMoves(self, board, player: int):
-        """
-        Input:
-            board: current board
-            player: current player
-
-        Returns:
-            validMoves: a binary vector of length self.getActionSize(), 1 for
-                        moves that are valid from the current board and player,
-                        0 for invalid moves
-        """
+    def win_state(self) -> Tuple[bool, int]:
+        """Get the win state of the game, a tuple of a boolean representing if the game is over, and a value integer."""
         pass
 
     @abstractmethod
-    def getGameEnded(self, board, player: int) -> int:
-        """
-        Input:
-            board: current board
-            player: current player (1 or -1)
-
-        Returns:
-            r: 0 if game has not ended. 1 if player won, -1 if player lost,
-               small non-zero value for draw.
-               
-        """
+    def observation(self):
+        """Get an observation from the game state in the form of a numpy array with the size of self.observation_size"""
         pass
 
     @abstractmethod
-    def getCanonicalForm(self, board, player: int, copy=True):
+    def symmetries(self, pi) -> List[Tuple[Any, int]]:
         """
-        Input:
-            board: current board
-            player: current player (1 or -1)
-            copy: whether or not to create a new copy of `board` for performance optimization.
-
-        Returns:
-            canonicalBoard: returns canonical form of board. The canonical form
-                            should be independent of player. For e.g. in chess,
-                            the canonical form can be chosen to be from the pov
-                            of white. When the player is white, we can return
-                            board as is. When the player is black, we can invert
-                            the colors and return the board.
-        """
-        pass
-
-    @abstractmethod
-    def stringRepresentation(self, state) -> str:
-        """
-        Input:
-            state: current board
-
-        Returns:
-            boardString: a quick and unique conversion of board to a string format.
-                         Required by MCTS for hashing.
-        """
-        pass
-
-    def getSymmetries(self, state, pi) -> List[Tuple[Any, int]]:
-        """
-        Input:
-            state: current canonical state
+        Args:
             pi: the current policy for the given canonical state
 
         Returns:
@@ -157,3 +82,6 @@ class Game(ABC):
                         can be disabled for training.
         """
         pass
+
+    def __str__(self):
+        return f'Player:\t{self._player}\n{self._board}\n'
