@@ -6,6 +6,8 @@ This is an implementation of AlphaZero based on the following repositories:
 
 This project is still work-in-progress, so expect frequent fixes, updates, and much more detailed documentation soon.
 
+You may join the [Discord server](https://discord.gg/MVaHwGZpRC) if would like to join the community and discuss this project, ask questions, or help out in the framework's development.
+
 ### Current differences from the above repos
 1. **Model Gating**: after each iteration, the model is compared to the previous iteration. The model that performs better continues forward based on an adjustable parameter.
 2. **Batched MCTS**: bhandsconnect's repo already includes this for self play, but it has been expanded upon to be included in Arena for faster comparison of models.
