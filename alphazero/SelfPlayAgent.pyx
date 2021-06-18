@@ -95,21 +95,30 @@ class SelfPlayAgent(mp.Process):
 
         for i in range(self.batch_size):
             state = self.mcts[i].find_leaf(self.games[i])
+            game_over, _ = state.win_state()
             if self._is_warmup:
-                policy = state.valid_moves()
-                policy = policy / np.sum(policy)
-                self.policy_tensor[i] = torch.from_numpy(policy)
-                self.value_tensor[i] = np.random.uniform(-1, 1)
+                if not game_over:
+                    policy = state.valid_moves()
+                    policy = policy / np.sum(policy)
+                    self.policy_tensor[i] = torch.from_numpy(policy)
+                    self.value_tensor[i] = np.random.uniform(-1, 1)
+                else:
+                    self.policy_tensor[i] = torch.zeros(self.games[i].action_size())
+                    self.value_tensor[i] = 0.
                 continue
 
-            data = torch.from_numpy(state.observation())
-            if self._is_arena:
-                data = data.view(-1, *state.observation_size())
-                player = self.player_to_index[self.games[i].current_player()]
-                batch_tensor[player].append(data)
-                self.batch_indices[player].append(i)
-            else:
-                self.batch_tensor[i].copy_(data)
+            if not game_over:
+                data = torch.from_numpy(state.observation())
+                if self._is_arena:
+                    data = data.view(-1, *state.observation_size())
+                    player = self.player_to_index[self.games[i].current_player()]
+                    batch_tensor[player].append(data)
+                    self.batch_indices[player].append(i)
+                else:
+                    self.batch_tensor[i].copy_(data)
+            elif self._is_arena:
+                batch_tensor[0].append(torch.zeros(1, *self.games[i].observation_size()))
+                self.batch_indices[0].append(i)
 
         if self._is_arena:
             for player in self.game_cls.get_players():

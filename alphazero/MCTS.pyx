@@ -12,6 +12,8 @@ from libc.math cimport sqrt
 import numpy as np
 import cython
 
+np.seterr(all='raise')
+
 
 def rebuild_node(children, a, cpuct, e, q, n, p, player):
     childs = []

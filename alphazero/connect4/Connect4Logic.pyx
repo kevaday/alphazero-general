@@ -22,7 +22,7 @@ cdef class Board():
     cdef public int[:,:] pieces
 
     def __init__(self, int height, int width, int win_length):
-        "Set up initial board configuration."
+        """Set up initial board configuration."""
         self.height = height
         self.width = width
         self.win_length = win_length
@@ -37,7 +37,7 @@ cdef class Board():
         self.pieces = np.asarray(pieces)
 
     def add_stone(self, int column, int player):
-        "Create copy of board containing new stone."
+        """Create copy of board containing new stone."""
         cdef Py_ssize_t r
         for r in range(self.height):
             if self.pieces[(self.height-1)-r,column] == 0:
@@ -47,12 +47,13 @@ cdef class Board():
         raise ValueError("Can't play column %s on board %s" % (column, self))
 
     def get_valid_moves(self):
-        "Any zero value in top row in a valid move"
+        """Any zero value in top row is a valid move"""
         cdef Py_ssize_t c
         cdef int[:] valid = np.zeros((self.width), dtype=np.intc)
         for c in range(self.width):
             if self.pieces[0,c] == 0:
                 valid[c] = 1
+
         return valid
 
     def get_win_state(self):
