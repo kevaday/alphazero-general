@@ -10,10 +10,11 @@ You may join the [Discord server](https://discord.gg/MVaHwGZpRC) if would like t
 
 ### Current differences from the above repos
 1. **Model Gating**: after each iteration, the model is compared to the previous iteration. The model that performs better continues forward based on an adjustable parameter.
-2. **Batched MCTS**: bhandsconnect's repo already includes this for self play, but it has been expanded upon to be included in Arena for faster comparison of models.
-3. **Multiplayer Support**: Any number of players are supported! This allows for training on a greater variety of games such as many types of card games or something like Catan.
-4. **Warmup Iterations**: A few self play iterations in the beginning of training are performed using random policy and value to speed up initial generation of training data instead of using the model as it would be random anyways.
-5. Generally cleaner, more functional and universal code so far.
+2. **Node-based MCTS**: this framework uses a better implementation of MCTS that uses nodes instead of dictionary lookups. This allows for a huge increase in performance and much less RAM usage than what the previous implementation used. The code for this was provided by bhandsconnect and it is much appreciated.
+3. **Batched MCTS**: bhandsconnect's repo already includes this for self play, but it has been expanded upon to be included in Arena for faster comparison of models.
+4. **Multiplayer Support**: Any number of players are supported! This allows for training on a greater variety of games such as many types of card games or something like Catan.
+5. **Warmup Iterations**: A few self play iterations in the beginning of training are performed using random policy and value to speed up initial generation of training data instead of using the model as it would be random anyways.
+6. Generally cleaner, more functional and universal code so far.
 
 ## Getting Started
 ### Install required packages
