@@ -112,6 +112,14 @@ cdef class MCTS:
     def __reduce__(self):
         return rebuild_mcts, (self.cpuct, self._root, self._curnode, self.path)
 
+    cpdef search(self, gs, nn, sims):
+        cdef float v
+        cdef float[:] p
+        for _ in range(sims):
+            leaf = self.find_leaf(gs)
+            p, v = nn(leaf.observation()) if not leaf.win_state() else np.array([], dtype=np.float32), 0
+            self.process_results(leaf, v, p)
+
     cpdef update_root(self, gs, int a):
         if self._root._children == []:
             self._root.add_children(gs.valid_moves())

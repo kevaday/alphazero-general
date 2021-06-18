@@ -1,6 +1,7 @@
 # cython: language_level=3
 
 from alphazero.Game import GameState
+from alphazero.GenericPlayers import BasePlayer
 from alphazero.SelfPlayAgent import SelfPlayAgent, get_game_results
 from alphazero.pytorch_classification.utils import Bar, AverageMeter
 from alphazero.utils import dotdict
@@ -15,16 +16,22 @@ import random
 
 
 class _PlayerWrapper:
-    def __init__(self, player_func, index):
-        self.player_func = player_func
+    def __init__(self, player, index):
+        self.player = player
         self.index = index
         self.wins = 0
         self.winrate = 0
 
     def __call__(self, *args, **kwargs):
-        return self.player_func(*args, **kwargs)
+        return self.player(*args, **kwargs)
+
+    def update(self, *args, **kwargs):
+        self.player.update(*args, **kwargs)
 
     def reset(self):
+        self.player.reset()
+
+    def reset_wins(self):
         self.wins = 0
         self.winrate = 0
 
@@ -45,7 +52,7 @@ class Arena:
 
     def __init__(
             self,
-            players: List[Callable],
+            players: List[BasePlayer],
             game_cls,
             use_batched_mcts=True,
             display: Callable = None,
@@ -96,7 +103,7 @@ class Arena:
     def __reset_counts(self):
         self.draws = 0
         self.winrates = []
-        [player.reset() for player in self.players]
+        [player.reset_wins() for player in self.players]
 
     def __update_winrates(self, num_games):
         [player.update_winrate(self.draws, num_games) for player in self.players]
@@ -112,6 +119,9 @@ class Arena:
         """
         if verbose: assert self.display
 
+        # Reset the state of the players if needed
+        [p.reset() for p in self.players]
+
         state = self.game_cls()
         turns = 0
 
@@ -126,6 +136,7 @@ class Arena:
             valids = state.valid_moves()
             assert valids[action] > 0, ' '.join(map(str, [action, index, state.current_player(), turns, valids]))
 
+            [p.update(state, action) for p in self.players]
             state.play_action(action)
             game_over, value = state.win_state()
             turns += 1
@@ -180,6 +191,7 @@ class Arena:
             #    self.args.workers = mp.cpu_count() - 1
 
             for i in range(self.args.workers):
+                player_to_index = get_player_order()
                 input_tensors = [[] for _ in player_to_index]
                 batch_queues.append(mp.Queue())
 
@@ -194,7 +206,6 @@ class Arena:
                 value_tensors[i].share_memory_()
 
                 batch_ready.append(mp.Event())
-                player_to_index = get_player_order()
 
                 agents.append(
                     SelfPlayAgent(i, self.game_cls(), ready_queue, batch_ready[i],
@@ -237,7 +248,7 @@ class Arena:
                 wins, draws = get_game_results(
                     result_queue,
                     self.game_cls,
-                    get_index=lambda p, i: agents[i].player_to_index[p]
+                    _get_index=lambda p, i: agents[i].player_to_index[p]
                 )
                 for i, w in enumerate(wins):
                     self.players[i].wins += w

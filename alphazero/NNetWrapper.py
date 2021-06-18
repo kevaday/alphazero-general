@@ -108,7 +108,8 @@ class NNetWrapper(NeuralNet):
             # print('PREDICTION TIME TAKEN : {0:03f}'.format(time.time()-start))
             return torch.exp(pi).data.cpu().numpy()[0], v.data.cpu().numpy()[0]
 
-    def process(self, batch):
+    def process(self, batch: torch.Tensor):
+        batch = batch.type(torch.FloatTensor)
         if self.args.cuda:
             batch = batch.cuda()
         self.nnet.eval()

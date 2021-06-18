@@ -29,6 +29,9 @@ class BasePlayer(object):
         self.won = False
         self.__is_turn = is_turn
 
+    def __eq__(self, other):
+        return other is not None and self.__dict__ == other.__dict__
+
     @property
     def is_turn(self) -> bool:
         return self.__is_turn
@@ -220,6 +223,15 @@ class BaseBoard(ABC):
 
     def __int__(self):
         return [[int(tile) for tile in row] for row in self]
+
+    def __eq__(self, other: 'BaseBoard') -> bool:
+        return (
+            self.width == other.width
+            and self.height == other.height
+            and self.num_turns == other.num_turns
+            and self.get_winner() == other.get_winner()
+            and [tile == other_tile for row, other_row in zip(self, other) for tile, other_tile in zip(row, other_row)]
+        )
 
     def __copy__(
             self,

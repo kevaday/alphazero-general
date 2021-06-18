@@ -12,6 +12,12 @@ class BasePlayer(ABC):
     def __call__(self, *args, **kwargs):
         return self.play(*args, **kwargs)
 
+    def update(self, state: GameState, action: int) -> None:
+        pass
+
+    def reset(self):
+        pass
+
     @abstractmethod
     def play(self, state: GameState, turn: int) -> int:
         pass
@@ -92,15 +98,19 @@ class MCTSPlayer(BasePlayer):
                 'cpuct': self.cpuct
             })
 
-        self.mcts = MCTS(self.args.cpuct)
+        self.reset()
+
+    def update(self, state: GameState, action: int) -> None:
+        self.mcts.update_root(state, action)
+
+    def reset(self):
+        self.mcts = MCTS(self.cpuct)
 
     def play(self, state, turn) -> int:
+        self.mcts.search(state, self.nn, self.num_sims)
         temp = 1 if turn <= self.temp_threshold else self.temp
         policy = self.mcts.probs(state, temp)
         
         if self.verbose: print('max tree depth:', len(self.mcts.path))
 
-        action = np.random.choice(len(policy), p=policy)
-        self.mcts.update_root(state, action)
-
-        return action
+        return np.random.choice(len(policy), p=policy)

@@ -27,12 +27,12 @@ def get_game_results(result_queue, game_cls, _get_index=None):
 
 
 class SelfPlayAgent(mp.Process):
-    def __init__(self, id, game, ready_queue, batch_ready, batch_tensor, policy_tensor,
+    def __init__(self, id, game_cls, ready_queue, batch_ready, batch_tensor, policy_tensor,
                  value_tensor, output_queue, result_queue, complete_count, games_played,
                  stop_event: mp.Event, args, _is_arena=False, _is_warmup=False, _player_order=None):
         super().__init__()
         self.id = id
-        self.game_cls = type(game)
+        self.game_cls = game_cls
         self.ready_queue = ready_queue
         self.batch_ready = batch_ready
         self.batch_tensor = batch_tensor

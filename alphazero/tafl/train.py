@@ -61,34 +61,34 @@ args = dotdict({
 
 
 args = get_args(
-    run_name='hnefatafl_fast',
+    run_name='hnefatafl',
     max_moves=DRAW_MOVE_COUNT,
     num_stacked_observations=NUM_STACKED_OBSERVATIONS,
-    cpuct=3.5,
+    cpuct=4,
     symmetricSamples=False,
-    numMCTSSims=50,
+    numMCTSSims=100,
     numFastSims=5,
     numWarmupSims=10,
     probFastSim=0.75,
-    mctsResetThreshold=DRAW_MOVE_COUNT // 2,
+    # mctsResetThreshold=DRAW_MOVE_COUNT // 2,
     tempThreshold=int(DRAW_MOVE_COUNT*0.7),
     
     skipSelfPlayIters=None,
     model_gating=False,
     max_gating_iters=3,
-    numWarmupIters=2,
-    arenaCompareBaseline=4,
-    baselineCompareFreq=4,
+    numWarmupIters=1,
+    arenaCompareBaseline=1,
+    baselineCompareFreq=1,
     pastCompareFreq=2,
-    # baselineTester=GreedyTaflPlayer,
+    baselineTester=GreedyTaflPlayer,
     min_next_model_winrate=0.52,
     
-    process_batch_size=128,
+    process_batch_size=1024,
     train_batch_size=1024,
-    arena_batch_size=32,
-    arenaCompare=128,
+    arena_batch_size=64,
+    arenaCompare=256,
     # train_steps_per_iteration=128,
-    gamesPerIteration=512,
+    gamesPerIteration=1024*4,
     
     lr=0.01,
     num_channels=128,
@@ -101,7 +101,6 @@ args = get_args(
 
 
 if __name__ == "__main__":
-    g = Game(variants.hnefatafl, max_moves=args.max_moves, num_stacked_obs=args.num_stacked_observations)
-    nnet = nn(g, args)
-    c = Coach(g, nnet, args)
+    nnet = nn(Game, args)
+    c = Coach(Game, nnet, args)
     c.learn()

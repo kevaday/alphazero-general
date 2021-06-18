@@ -202,7 +202,7 @@ class Coach:
             self.batch_ready.append(mp.Event())
 
             self.agents.append(
-                SelfPlayAgent(i, self.game_cls(), self.ready_queue, self.batch_ready[i],
+                SelfPlayAgent(i, self.game_cls, self.ready_queue, self.batch_ready[i],
                               self.input_tensors[i], self.policy_tensors[i], self.value_tensors[i], self.file_queue,
                               self.result_queue, self.completed, self.games_played, self.stop_agents, self.args,
                               _is_warmup=self.warmup)

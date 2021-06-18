@@ -35,7 +35,7 @@ class Connect4Game(GameState):
 
     def clone(self) -> 'Connect4Game':
         game = Connect4Game()
-        game._board.pieces = np.copy(self._board.pieces)
+        game._board.pieces = np.copy(np.asarray(self._board.pieces))
         game._player = self._player
         game.turns = self.turns
         return game
@@ -49,7 +49,7 @@ class Connect4Game(GameState):
         return NUM_CHANNELS, DEFAULT_HEIGHT, DEFAULT_WIDTH
 
     def valid_moves(self):
-        return self._board.get_valid_moves()
+        return np.asarray(self._board.get_valid_moves())
 
     def play_action(self, action: int) -> None:
         self._board.add_stone(action, self.current_player())

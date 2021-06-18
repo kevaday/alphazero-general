@@ -2,18 +2,31 @@
 
 import pyximport; pyximport.install()
 
-from alphazero.Game import Game
-from hnefatafl.engine import Board, Move, PieceType
-from typing import List, Tuple
+from alphazero.Game import GameState
+from hnefatafl.engine import Board, Move, PieceType, variants
+from typing import List, Tuple, Any
 
 import numpy as np
 
 
+def _get_board():
+    return Board(GAME_VARIANT, _store_past_states=False)
+
+
+GAME_VARIANT = variants.hnefatafl
+b = _get_board()
+ACTION_SIZE = b.width * b.height * (b.width + b.height - 2)
+
 NUM_PLAYERS = 2
-DRAW_MOVE_COUNT = 200
-NUM_STACKED_OBSERVATIONS = 1
+PLAYERS = list(range(NUM_PLAYERS))
+
+NUM_STACKED_OBSERVATIONS = 0
 NUM_BASE_CHANNELS = 5
-NUM_CHANNELS = NUM_BASE_CHANNELS * NUM_STACKED_OBSERVATIONS
+NUM_CHANNELS = NUM_BASE_CHANNELS * (NUM_STACKED_OBSERVATIONS + 1)
+OBS_SIZE = (NUM_CHANNELS, b.width, b.height)
+del b
+
+DRAW_MOVE_COUNT = 200
 MAX_REPEATS = 3  # N-fold repetition loss
 # Used for checking pairs of moves from same player
 # Changing this breaks repeat check
@@ -79,158 +92,117 @@ def _get_observation(board: Board, player_turn: int, const_max_player: int, cons
     def add_empty():
         obs.extend([[[0]*board.width]*board.height]*NUM_BASE_CHANNELS)
 
-    past = board._past_states.copy()
-    past.append((board, None))
-    past_len = len(past)
-    for i in range(past_obs):
-        if past_len < i + 1:
-            add_empty()
-        else:
-            add_obs(past[i][0], past_len-i-1)
+    if board._store_past_states:
+        past = board._past_states.copy()
+        past.append((board, None))
+        past_len = len(past)
+        for i in range(past_obs):
+            if past_len < i + 1:
+                add_empty()
+            else:
+                add_obs(past[i][0], past_len-i-1)
+    else:
+        add_obs(board, board.num_turns)
 
     return np.array(obs, dtype=np.float32)
 
 
-class CustomBoard(Board):
-    def __init__(self, *args, max_moves=DRAW_MOVE_COUNT, num_stacked_obs=NUM_STACKED_OBSERVATIONS, **kwargs):
-        super().__init__(*args, **kwargs)
-        self.max_moves = max_moves if max_moves else 0
-        self.num_stacked_obs = num_stacked_obs
-        self.current_player = 0
-        self.winner = None
-    
-    def copy(self, *args, **kwargs):
-        b = super().copy(*args, **kwargs)
-        b.max_moves = self.max_moves
-        b.num_stacked_obs = self.num_stacked_obs
-        b.current_player = self.current_player
-        return b
+class TaflGame(GameState):
+    def __init__(self):
+        super().__init__(_get_board())
 
-    def astype(self, t):
-        return _get_observation(
-            self,
-            2 - self.to_play().value,
-            NUM_PLAYERS,
-            self.max_moves,
-            self.num_stacked_obs
-        ).astype(t)
-
-
-class TaflGame(Game):
-    def __init__(self, game_variant, max_moves: int = DRAW_MOVE_COUNT, num_stacked_obs: int = NUM_STACKED_OBSERVATIONS):
-        super().__init__()
-        self.board = CustomBoard(
-            max_moves=max_moves,
-            num_stacked_obs=num_stacked_obs,
-            board=game_variant,
-            _store_past_states=False,
-            # _max_past_states=max(num_stacked_obs, _TWO_MOVES * MAX_REPEATS + _ONE_MOVE)
-        )
-        self.board_size = (self.board.width, self.board.height)
-        self.action_size = self.board.width * self.board.height * (self.board.width + self.board.height - 2)
-        self.players = list(range(NUM_PLAYERS))
-        self.obs_size = (NUM_CHANNELS, *self.board_size)
+    def __eq__(self, other: 'TaflGame') -> bool:
+        return self.__dict__ == other.__dict__
 
     @staticmethod
     def _get_piece_type(player: int) -> PieceType:
-        return PieceType(2 - player)
+        return PieceType.black if player == 1 else PieceType.white
 
     @staticmethod
     def _get_player_int(player: PieceType) -> int:
-        return 2 - player.value
+        return [1, -1][2 - player.value]
 
-    def getInitBoard(self) -> CustomBoard:
-        return self.board.copy()
+    def clone(self) -> 'GameState':
+        g = TaflGame()
+        g._board = self._board.copy()
+        return g
 
-    def getBoardSize(self):
-        return self.board_size
+    @staticmethod
+    def action_size() -> int:
+        return ACTION_SIZE
 
-    def getActionSize(self) -> int:
-        return self.action_size
+    @staticmethod
+    def observation_size() -> Tuple[int, int, int]:
+        return OBS_SIZE
 
-    def getPlayers(self) -> List[int]:
-        return self.players
-
-    def getObservationSize(self) -> tuple:
-        # channels x width x height
-        return self.obs_size
-
-    def getNextState(self, board: CustomBoard, player: int, action: int, copy=True):
-        b = board.copy() if copy else board
-        move = get_move(b, action)
-        try:
-            b.move(move, _check_game_end=False, _check_valid=False)
-        except Exception as e:
-            print()
-            print(e)
-            print(b)
-            print(str(move), action)
-            print(list(reversed(board._past_states)))
-            print(player, board.num_turns, board.get_winner())
-            print(bool(self.getValidMoves(board, player)[action]))
-            print(move in b.all_valid_moves(b.to_play()))
-            exit()
-
-        return b, self.getNextPlayer(player)
-
-    def getValidMoves(self, board: CustomBoard, player: int) -> np.ndarray:
-        valids = [0] * self.getActionSize()
-        legal_moves = board.all_valid_moves(
-            self._get_piece_type(self.getNextPlayer(board.current_player, player))
-        )
+    def valid_moves(self):
+        valids = [0] * self.action_size()
+        legal_moves = self._board.all_valid_moves(self._get_piece_type(self.current_player()))
 
         for move in legal_moves:
-            valids[get_action(board, move)] = 1
+            valids[get_action(self._board, move)] = 1
 
-        return np.array(valids, dtype=np.float32)
+        return np.array(valids, dtype=np.intc)
 
-    def getGameEnded(self, board: CustomBoard, player: int):
+    def play_action(self, action: int) -> None:
+        move = get_move(self._board, action)
+        self._board.move(move, _check_game_end=False, _check_valid=False)
+
+    def win_state(self) -> Tuple[bool, int]:
         # Check if maximum moves have been exceeded
-        if self.board.max_moves and board.num_turns >= self.board.max_moves:
-            return -1e-4
+        if self._board.num_turns >= DRAW_MOVE_COUNT:
+            return True, 0
 
-        winner = board.get_winner()
-        if not winner: return 0
+        winner = self._board.get_winner()
+        if not winner: return False, 0
 
-        player = self.getNextPlayer(board.current_player, player)
-
-        player = self.getNextPlayer(board.current_player, player)
         winner = self._get_player_int(winner)
-        reward = int(winner == player)
-        reward -= int(winner == self.getNextPlayer(player))
-        
-        return reward
+        reward = int(winner == self.current_player())
+        reward -= int(winner == -1*self.current_player())
 
-    def getCanonicalForm(self, board: CustomBoard, player: int, copy=True):
-        b = board.copy() if copy else board
-        b.current_player = self.getNextPlayer(b.current_player, player)
-        return b
+        return True, reward
 
-    def getSymmetries(self, board: CustomBoard, pi: np.ndarray) -> List[Tuple[CustomBoard, np.ndarray]]:
-        action_size = self.getActionSize()
+    def observation(self):
+        return _get_observation(
+            self._board,
+            0 if self.current_player() == 1 else 1,
+            NUM_PLAYERS,
+            DRAW_MOVE_COUNT,
+            NUM_STACKED_OBSERVATIONS + 1
+        )
+
+    def symmetries(self, pi: np.ndarray) -> List[Tuple[Any, int]]:
+        action_size = self.action_size()
         assert (len(pi) == action_size)
         syms = [None] * 8
 
         for i in range(1, 5):
             for flip in (False, True):
-                state = np.rot90(np.array(board._board), i)
+                state = np.rot90(np.array(self._board), i)
                 if flip:
                     state = np.fliplr(state)
 
-                num_past_states = min(self.board.num_stacked_obs, len(board._past_states))
+                num_past_states = min(
+                    NUM_STACKED_OBSERVATIONS,
+                    len(self._board._past_states) if self._board._store_past_states else 0
+                )
                 past_states = [None] * num_past_states
                 for idx in range(num_past_states):
-                    past = board._past_states[idx]
+                    past = self._board._past_states[idx]
                     b = np.rot90(np.array(past[0]._board), i)
                     if flip:
                         b = np.fliplr(b)
-                    past_states[idx] = (board.copy(store_past_states=False, state=b.tolist()), past[1])
+                    past_states[idx] = (self._board.copy(store_past_states=False, state=b.tolist()), past[1])
 
-                new_b = board.copy(store_past_states=True, state=state.tolist(), past_states=past_states)
+                new_b = self._board.copy(
+                    store_past_states=self._board._store_past_states,
+                    state=state.tolist(),
+                    past_states=past_states
+                )
 
-                new_pi = [0]*action_size
+                new_pi = [0] * action_size
                 for action, prob in enumerate(pi):
-                    move = get_move(board, action)
+                    move = get_move(self._board, action)
 
                     x = move.tile.x
                     new_x = move.new_tile.x
@@ -240,31 +212,29 @@ class TaflGame(Game):
                     for _ in range(i):
                         temp_x = x
                         temp_new_x = new_x
-                        x = self.board.width - 1 - y
-                        new_x = self.board.width - 1 - new_y
+                        x = self._board.width - 1 - y
+                        new_x = self._board.width - 1 - new_y
                         y = temp_x
                         new_y = temp_new_x
                     if flip:
-                        x = self.board.width - 1 - x
-                        new_x = self.board.width - 1 - new_x
+                        x = self._board.width - 1 - x
+                        new_x = self._board.width - 1 - new_x
 
                     move = Move(new_b, x, y, new_x, new_y)
                     new_action = get_action(new_b, move)
                     new_pi[new_action] = prob
 
-                syms[(i-1)*2 + int(flip)] = (new_b, np.array(new_pi, dtype=np.float32))
+                new_state = self.clone()
+                new_state._board = new_b
+                syms[(i - 1) * 2 + int(flip)] = (new_state, np.array(new_pi, dtype=np.float32))
 
         return syms
 
-    def stringRepresentation(self, board: CustomBoard):
-        return board.to_string() + str(board.current_player) + str(board.num_turns) + \
-               str(board.num_repeats(PieceType.black)) + str(board.num_repeats(PieceType.white))
-
-    def getScore(self, board: CustomBoard, player: int) -> int:
-        result = self.getGameEnded(board, player)
-        white_pieces = len(list(filter(lambda p: p.is_white, board.pieces)))
-        black_pieces = len(list(filter(lambda p: p.is_black, board.pieces)))
-        return [1, -1][player] * (1000 * result + black_pieces - white_pieces)
+    def crude_value(self) -> int:
+        _, result = self.win_state()
+        white_pieces = len(list(filter(lambda p: p.is_white, self._board.pieces)))
+        black_pieces = len(list(filter(lambda p: p.is_black, self._board.pieces)))
+        return self.current_player() * (1000 * result + black_pieces - white_pieces)
 
 
 if __name__ == '__main__':

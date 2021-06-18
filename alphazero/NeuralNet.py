@@ -1,5 +1,8 @@
 from abc import ABC, abstractmethod
-from typing import Optional
+from typing import Tuple
+from alphazero.Game import GameState
+
+import numpy as np
 
 
 class NeuralNet(ABC):
@@ -12,11 +15,14 @@ class NeuralNet(ABC):
     See othello/NNet.py for an example implementation.
     """
 
-    def __init__(self, game_cls):
+    def __init__(self, game_cls: GameState):
         pass
 
+    def __call__(self, *args, **kwargs):
+        return self.predict(*args, **kwargs)
+
     @abstractmethod
-    def train(self, examples, num_steps: Optional[int]):
+    def train(self, examples, num_steps: int) -> Tuple[float, float]:
         """
         This function trains the neural network with examples obtained from
         self-play.
@@ -26,19 +32,24 @@ class NeuralNet(ABC):
                       (board, pi, v). pi is the MCTS informed policy vector for
                       the given board, and v is its value. The examples has
                       board in its canonical form.
+            num_steps: the number of training steps to perform. Each step, a batch
+                       is fed through the network and backpropogated.
+        Returns:
+            pi_loss: the average loss of the policy head during the training as a float
+            val_loss: the average loss of the value head during the training as a float
         """
         pass
 
     @abstractmethod
-    def predict(self, board):
+    def predict(self, board: np.ndarray) -> Tuple[np.ndarray, float]:
         """
         Input:
-            board: current board in its canonical form.
+            board: current board as a numpy array
 
         Returns:
             pi: a policy vector for the current board- a numpy array of length
-                game.getActionSize
-            v: a float in [-1,1] that gives the value of the current board
+                game.action_size()
+            v: a float in float range [-1,1] that gives the value of the current board
         """
         pass
 
