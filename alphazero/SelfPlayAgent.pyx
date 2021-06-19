@@ -174,7 +174,8 @@ class SelfPlayAgent(mp.Process):
                             if self.args.symmetricSamples:
                                 data = self.games[i].symmetries(hist[1])
                             else:
-                                data = (hist[0], hist[1])
+                                data = ((hist[0], hist[1]),)
+
                             for obs, pi in data:
                                 self.output_queue.put((
                                     obs, pi,

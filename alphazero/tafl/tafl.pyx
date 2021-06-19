@@ -147,6 +147,7 @@ class TaflGame(GameState):
     def play_action(self, action: int) -> None:
         move = get_move(self._board, action)
         self._board.move(move, _check_game_end=False, _check_valid=False)
+        self._player *= -1
 
     def win_state(self) -> Tuple[bool, int]:
         # Check if maximum moves have been exceeded

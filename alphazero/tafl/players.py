@@ -25,9 +25,6 @@ class HumanTaflPlayer(BasePlayer):
 
 
 class GreedyTaflPlayer(BasePlayer):
-    def __init__(self, game: TaflGame):
-        super().__init__(game)
-
     def play(self, state: GameState, turn: int):
         valids = state.valid_moves()
         candidates = []

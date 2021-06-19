@@ -1,12 +1,12 @@
+from alphazero.Game import GameState
+from alphazero.GenericPlayers import BasePlayer
+
 import numpy as np
 
 
-class HumanConnect4Player():
-    def __init__(self, game):
-        self.game = game
-
-    def play(self, board, turn):
-        valid_moves = self.game.getValidMoves(board, 1)
+class HumanConnect4Player(BasePlayer):
+    def play(self, state: GameState, turn: int) -> int:
+        valid_moves = state.valid_moves()
         print('\nMoves:', [i for (i, valid)
                            in enumerate(valid_moves) if valid])
 
@@ -19,23 +19,23 @@ class HumanConnect4Player():
         return move
 
 
-class OneStepLookaheadConnect4Player():
+class OneStepLookaheadConnect4Player(BasePlayer):
     """Simple player who always takes a win if presented, or blocks a loss if obvious, otherwise is random."""
 
-    def __init__(self, game, verbose=False):
-        self.game = game
+    def __init__(self, verbose=False):
         self.verbose = verbose
 
-    def play(self, board, turn):
-        valid_moves = self.game.getValidMoves(board, 0)
+    def play(self, state: GameState, turn: int) -> int:
+        valid_moves = state.valid_moves()
         win_move_set = set()
         fallback_move_set = set()
         stop_loss_move_set = set()
+        new_state = state.clone()
         for move, valid in enumerate(valid_moves):
             if not valid:
                 continue
-            state, _ = self.game.getNextState(board, 0, move)
-            result = self.game.getGameEnded(state, 0)
+            new_state.play_action(move)
+            _, result = new_state.win_state()
             if result == -1:
                 win_move_set.add(move)
             elif result == 1:
@@ -59,7 +59,6 @@ class OneStepLookaheadConnect4Player():
                 print('Playing random action %s from %s' %
                       (ret_move, fallback_move_set))
         else:
-            raise Exception('No valid moves remaining: %s' %
-                            self.game.stringRepresentation(board))
+            raise Exception('No valid moves remaining: %s' % state)
 
         return ret_move

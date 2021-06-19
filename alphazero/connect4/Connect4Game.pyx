@@ -60,6 +60,7 @@ class Connect4Game(GameState):
         return self._board.get_win_state()
 
     def observation(self):
+        """
         pieces = np.asarray(self._board.pieces)
         player1 = np.where(pieces == self.get_players()[0], 1, 0)
         player2 = np.where(pieces == self.get_players()[1], 1, 0)
@@ -67,6 +68,8 @@ class Connect4Game(GameState):
         turn = np.full_like(pieces, self.turns / MAX_TURNS)
 
         return np.array([player1, player2, colour, turn], dtype=np.intc)
+        """
+        return np.asarray(self._board.pieces)
 
     def symmetries(self, pi) -> List[Tuple[Any, int]]:
         return [(np.copy(self.observation()), pi), (self.observation()[:, :, ::-1], pi[::-1])]
