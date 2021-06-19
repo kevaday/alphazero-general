@@ -117,7 +117,7 @@ cdef class MCTS:
         cdef float[:] p
         for _ in range(sims):
             leaf = self.find_leaf(gs)
-            p, v = nn(leaf.observation()) if not leaf.win_state() else np.array([], dtype=np.float32), 0
+            p, v = nn(leaf.observation())
             self.process_results(leaf, v, p)
 
     cpdef update_root(self, gs, int a):

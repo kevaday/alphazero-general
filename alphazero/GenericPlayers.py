@@ -111,6 +111,8 @@ class MCTSPlayer(BasePlayer):
         temp = 1 if turn <= self.temp_threshold else self.temp
         policy = self.mcts.probs(state, temp)
         
-        if self.verbose: print('max tree depth:', len(self.mcts.path))
+        if self.verbose:
+            # print('max tree depth:', len(self.mcts.path))
+            print(f'value for player {state.current_player()}: {self.mcts.value()}')
 
         return np.random.choice(len(policy), p=policy)

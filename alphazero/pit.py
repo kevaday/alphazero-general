@@ -13,9 +13,8 @@ any agent.
 if __name__ == '__main__':
     from alphazero.tafl.tafl import TaflGame as Game
     from alphazero.tafl.players import HumanTaflPlayer, GreedyTaflPlayer
-    from alphazero.tafl.train import args, variants
+    from alphazero.tafl.train import args
 
-    g = Game(variants.hnefatafl, max_moves=args.max_moves, num_stacked_obs=args.num_stacked_observations)
     args.numMCTSSims = 100
     args.tempThreshold = 100
     args.temp = 0.1
@@ -27,20 +26,20 @@ if __name__ == '__main__':
     # hp = HumanTaflPlayer(g).play
 
     # nnet players
-    nn1 = NNet(g, args)
+    nn1 = NNet(Game, args)
     nn1.load_checkpoint('./checkpoint/hnefatafl', 'iteration-0001.pkl')
-    nn2 = NNet(g, args)
-    nn2.load_checkpoint('./checkpoint/hnefatafl', 'iteration-0000.pkl')
+    #nn2 = NNet(Game, args)
+    #nn2.load_checkpoint('./checkpoint/hnefatafl', 'iteration-0000.pkl')
     #player1 = nn1.process
     #player2 = nn2.process
 
-    player1 = MCTSPlayer(g, nn1, reset_mcts=True, args=args).play
-    player2 = MCTSPlayer(g, nn2, reset_mcts=True, args=args).play
-    #player2 = RandomPlayer(g).play
-    #player2 = GreedyTaflPlayer(g).play
+    player1 = MCTSPlayer(nn1, args=args)
+    #player2 = MCTSPlayer(nn2, args=args)
+    #player2 = RandomPlayer()
+    player2 = GreedyTaflPlayer()
 
     players = [player1, player2]
-    arena = Arena(players, g, use_batched_mcts=False, args=args, display=print)
+    arena = Arena(players, Game, use_batched_mcts=False, args=args, display=print)
     wins, draws, winrates = arena.play_game(verbose=True)
     for i in range(len(wins)):
         print(f'player{i+1}:\n\twins: {wins[i]}\n\twin rate: {winrates[i]}')

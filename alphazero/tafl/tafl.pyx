@@ -9,8 +9,11 @@ from typing import List, Tuple, Any
 import numpy as np
 
 
+MAX_REPEATS = 3  # N-fold repetition loss
+
+
 def _get_board():
-    return Board(GAME_VARIANT, _store_past_states=False)
+    return Board(GAME_VARIANT, max_repeats=MAX_REPEATS, _store_past_states=False)
 
 
 GAME_VARIANT = variants.hnefatafl
@@ -27,7 +30,6 @@ OBS_SIZE = (NUM_CHANNELS, b.width, b.height)
 del b
 
 DRAW_MOVE_COUNT = 200
-MAX_REPEATS = 3  # N-fold repetition loss
 # Used for checking pairs of moves from same player
 # Changing this breaks repeat check
 _ONE_MOVE = 2
@@ -125,6 +127,7 @@ class TaflGame(GameState):
     def clone(self) -> 'GameState':
         g = TaflGame()
         g._board = self._board.copy()
+        g._player = self._player
         return g
 
     @staticmethod

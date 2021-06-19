@@ -29,10 +29,9 @@ class GreedyTaflPlayer(BasePlayer):
         valids = state.valid_moves()
         candidates = []
 
-        new_state = state.clone()
         for a in range(state.action_size()):
-            if valids[a] == 0: continue
-
+            if not valids[a]: continue
+            new_state = state.clone()
             new_state.play_action(a)
             candidates.append((-new_state.crude_value(), a))
 

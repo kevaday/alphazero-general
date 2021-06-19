@@ -132,9 +132,10 @@ class Arena:
 
             index = state.current_player() if not _player_to_index else _player_to_index[state.current_player()]
             action = self.players[index](state, turns)
+            print(type(self.players[index].player))
 
-            valids = state.valid_moves()
-            assert valids[action] > 0, ' '.join(map(str, [action, index, state.current_player(), turns, valids]))
+            # valids = state.valid_moves()
+            # assert valids[action] > 0, ' '.join(map(str, [action, index, state.current_player(), turns, valids]))
 
             [p.update(state, action) for p in self.players]
             state.play_action(action)
@@ -208,7 +209,7 @@ class Arena:
                 batch_ready.append(mp.Event())
 
                 agents.append(
-                    SelfPlayAgent(i, self.game_cls(), ready_queue, batch_ready[i],
+                    SelfPlayAgent(i, self.game_cls, ready_queue, batch_ready[i],
                                   input_tensors, policy_tensors[i], value_tensors[i], batch_queues[i],
                                   result_queue, completed, games_played, stop_agents, self.args,
                                   _is_arena=True, _player_order=player_to_index.copy()))

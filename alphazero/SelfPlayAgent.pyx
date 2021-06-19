@@ -95,10 +95,9 @@ class SelfPlayAgent(mp.Process):
 
         for i in range(self.batch_size):
             state = self.mcts[i].find_leaf(self.games[i])
-            game_over, _ = state.win_state()
             if self._is_warmup:
-                if not game_over:
-                    policy = state.valid_moves()
+                policy = state.valid_moves()
+                if np.sum(policy) > 0:
                     policy = policy / np.sum(policy)
                     self.policy_tensor[i] = torch.from_numpy(policy)
                     self.value_tensor[i] = np.random.uniform(-1, 1)
@@ -107,18 +106,14 @@ class SelfPlayAgent(mp.Process):
                     self.value_tensor[i] = 0.
                 continue
 
-            if not game_over:
-                data = torch.from_numpy(state.observation())
-                if self._is_arena:
-                    data = data.view(-1, *state.observation_size())
-                    player = self.player_to_index[self.games[i].current_player()]
-                    batch_tensor[player].append(data)
-                    self.batch_indices[player].append(i)
-                else:
-                    self.batch_tensor[i].copy_(data)
-            elif self._is_arena:
-                batch_tensor[0].append(torch.zeros(1, *self.games[i].observation_size()))
-                self.batch_indices[0].append(i)
+            data = torch.from_numpy(state.observation())
+            if self._is_arena:
+                data = data.view(-1, *state.observation_size())
+                player = self.player_to_index[self.games[i].current_player()]
+                batch_tensor[player].append(data)
+                self.batch_indices[player].append(i)
+            else:
+                self.batch_tensor[i].copy_(data)
 
         if self._is_arena:
             for player in self.game_cls.get_players():
@@ -149,7 +144,7 @@ class SelfPlayAgent(mp.Process):
             action = np.random.choice(self.games[i].action_size(), p=policy)
             if not self.fast and not self._is_arena:
                 self.histories[i].append((
-                    self.games[i].observation(),
+                    self.games[i],
                     self.mcts[i].probs(self.games[i]),
                     self.mcts[i].value()
                 ))
@@ -176,9 +171,9 @@ class SelfPlayAgent(mp.Process):
                             else:
                                 data = ((hist[0], hist[1]),)
 
-                            for obs, pi in data:
+                            for state, pi in data:
                                 self.output_queue.put((
-                                    obs, pi,
+                                    state.observation(), pi,
                                     value * (1 - self.args.expertValueWeight.current)
                                     + self.args.expertValueWeight.current * hist[2]
                                 ))
