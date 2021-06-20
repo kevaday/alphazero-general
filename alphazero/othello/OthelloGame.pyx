@@ -1,111 +1,97 @@
 # cython: language_level=3
+from typing import List, Tuple, Any
 
 from alphazero.othello.OthelloLogic import Board
-from alphazero.Game import Game
+from alphazero.Game import GameState
 
 import numpy as np
 
 NUM_PLAYERS = 2
 NUM_CHANNELS = 1
+BOARD_SIZE = 8
+ACTION_SIZE = BOARD_SIZE ** 2
+OBSERVATION_SIZE = (NUM_CHANNELS, BOARD_SIZE, BOARD_SIZE)
 
 
-class OthelloGame(Game):
-    def __init__(self, n):
-        self.n = n
+class OthelloGame(GameState):
+    def __init__(self):
+        super().__init__(self._get_board())
 
-    def getInitBoard(self):
-        # return initial board (numpy board)
-        b = Board(self.n)
-        return np.asarray(b.pieces)
+    def __hash__(self) -> int:
+        return hash(self._board.pieces.tobytes() + bytes([self.turns]) + bytes([self._player]))
 
-    def getBoardSize(self):
-        # (a,b) tuple
-        return self.n, self.n
+    def __eq__(self, other: 'GameState') -> bool:
+        return (
+            np.asarray(self._board.pieces) == np.asarray(other._board.pieces)
+            and self._player == other._player
+            and self.turns == other.turns
+        )
 
-    def getActionSize(self):
-        # return number of actions
-        return self.n * self.n + 1
+    @staticmethod
+    def _get_board():
+        return Board(BOARD_SIZE)
 
-    def getObservationSize(self):
-        return (NUM_CHANNELS, *self.getBoardSize())
+    def clone(self) -> 'OthelloGame':
+        game = OthelloGame()
+        game._board.pieces = np.copy(np.asarray(self._board.pieces))
+        game._player = self._player
+        game.turns = self.turns
+        return game
 
-    def getPlayers(self):
-        return list(range(NUM_PLAYERS))
+    @staticmethod
+    def action_size() -> int:
+        return ACTION_SIZE
 
-    def _player_range(self, player):
-        return 1 if player == self.getPlayers()[0] else -1
+    @staticmethod
+    def observation_size() -> Tuple[int, int, int]:
+        return OBSERVATION_SIZE
 
-    def getNextState(self, board, player, action, copy=True):
-        # if player takes action on board, return next (board,player)
-        # action must be a valid move
-        b = Board(self.n)
-        b.pieces = np.copy(board) if copy else board
-
-        if action == self.n * self.n + 1:
-            return b, self.getNextPlayer(player)
-
-        move = (action // self.n, action % self.n)
-        b.execute_move(move, player)
-        return np.asarray(b.pieces), self.getNextPlayer(player)
-
-    def getValidMoves(self, board, player):
+    def valid_moves(self):
         # return a fixed size binary vector
-        valids = [0] * self.getActionSize()
-        b = Board(self.n)
-        b.pieces = board
+        valids = [0] * self.action_size()
 
-        legalMoves = b.get_legal_moves(player)
-        if len(legalMoves) == 0:
-            valids[-1] = 1
-            return np.array(valids)
+        for x, y in self._board.get_legal_moves(self.current_player()):
+            valids[self._board.n * x + y] = 1
 
-        for x, y in legalMoves:
-            valids[self.n*x+y] = 1
+        return np.array(valids, dtype=np.intc)
 
-        return np.array(valids)
+    def play_action(self, action: int) -> None:
+        move = (action // self._board.n, action % self._board.n)
+        self._board.execute_move(move, self.current_player())
+        self._update_turn()
 
-    def getGameEnded(self, board, player):
-        # return 0 if not ended, 1 if player 1 won, -1 if player 1 lost
-        b = Board(self.n)
-        b.pieces = board
-        player = self._player_range(player)
+    def win_state(self) -> Tuple[bool, int]:
+        if self._board.has_legal_moves(self.current_player()):
+            return False, 0
+        if self._board.has_legal_moves(-self.current_player()):
+            return False, 0
+        if self._board.count_diff(self.current_player()) > 0:
+            return True, self.current_player()
+        return True, -self.current_player()
 
-        if b.has_legal_moves(player):
-            return 0
-        if b.has_legal_moves(-player):
-            return 0
-        if b.countDiff(player) > 0:
-            return 1
-        return -1
+    def observation(self):
+        return np.expand_dims(np.asarray(self._board.pieces), axis=0)
 
-    def getCanonicalForm(self, board, player, copy=True):
-        # return state if player==1, else return -state if player==-1
-        return board * self._player_range(player)
-
-    def getSymmetries(self, board, pi):
+    def symmetries(self, pi) -> List[Tuple[Any, int]]:
         # mirror, rotational
-        assert(len(pi) == self.n**2+1)  # 1 for pass
-        pi_board = np.reshape(pi[:-1], (self.n, self.n))
+        assert (len(pi) == self._board.n ** 2)
+
+        pi_board = np.reshape(pi[:-1], (self._board.n, self._board.n))
         l = []
 
         for i in range(1, 5):
             for j in [True, False]:
-                newB = np.rot90(board, i)
-                newPi = np.rot90(pi_board, i)
+                new_b = np.rot90(np.asarray(self._board.pieces), i)
+                new_pi = np.rot90(pi_board, i)
                 if j:
-                    newB = np.fliplr(newB)
-                    newPi = np.fliplr(newPi)
-                l += [(newB, list(newPi.ravel()) + [pi[-1]])]
+                    new_b = np.fliplr(new_b)
+                    new_pi = np.fliplr(new_pi)
+
+                gs = self.clone()
+                gs._board = new_b
+                l.append((gs, new_pi.ravel()))
+
         return l
-
-    def stringRepresentation(self, board):
-        # 8x8 numpy array (canonical board)
-        return board.tostring()
-
-    def getScore(self, board, player):
-        b = Board(self.n)
-        b.pieces = np.copy(board)
-        return b.countDiff(player)
 
 
 def display(board):

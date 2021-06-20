@@ -8,6 +8,7 @@ class GameState(ABC):
     def __init__(self, board):
         self._board = board
         self._player = self.get_players()[0]
+        self.turns = 0
 
     @abstractmethod
     def __eq__(self, other: 'GameState') -> bool:
@@ -53,6 +54,11 @@ class GameState(ABC):
 
     def current_player(self) -> int:
         return self._player
+
+    def _update_turn(self):
+        """Should be called at the end of play_action"""
+        self._player *= -1
+        self.turns += 1
 
     @abstractmethod
     def play_action(self, action: int) -> None:

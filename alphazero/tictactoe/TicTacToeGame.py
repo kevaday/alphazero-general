@@ -1,116 +1,95 @@
-from alphazero.Game import Game
+from typing import List, Tuple, Any
+
+from alphazero.Game import GameState
 from alphazero.tictactoe.TicTacToeLogic import Board
 
 import numpy as np
 
 NUM_PLAYERS = 2
 NUM_CHANNELS = 1
+BOARD_SIZE = 3
+ACTION_SIZE = BOARD_SIZE ** 2
+OBSERVATION_SIZE = (NUM_CHANNELS, BOARD_SIZE, BOARD_SIZE)
 
 
-class TicTacToeGame(Game):
-    """
-    Game class implementation for the game of TicTacToe.
-    Based on the OthelloGame then getGameEnded() was adapted to new rules.
-
-    Author: Evgeny Tyurin, github.com/evg-tyurin
-    Date: Jan 5, 2018.
-
-    Based on the OthelloGame by Surag Nair.
-    """
-
-    def __init__(self, n=3):
-        self.n = n
-
-    def getInitBoard(self):
-        # return initial board (numpy board)
-        b = Board(self.n)
-        return np.array(b.pieces)
-
-    def getBoardSize(self):
-        # (a,b) tuple
-        return self.n, self.n
-
-    def getActionSize(self):
-        # return number of actions
-        return self.n * self.n + 1
-
-    def getObservationSize(self):
-        return (NUM_CHANNELS, *self.getBoardSize())
-
-    def getPlayers(self):
-        return list(range(NUM_PLAYERS))
+class TicTacToeGame(GameState):
+    def __init__(self):
+        super().__init__(self._get_board())
 
     @staticmethod
-    def _player_range(player):
-        return [1, -1][player]
+    def _get_board():
+        return Board(BOARD_SIZE)
 
-    def getNextState(self, board, player, action, copy=True):
-        # if player takes action on board, return next (board,player)
-        b = Board(self.n)
-        b.pieces = np.copy(board) if copy else board
+    def __eq__(self, other: 'TicTacToeGame') -> bool:
+        return (
+            self._board.pieces == other._board.pieces
+            and self._board.n == other._board.n
+            and self._player == other._player
+            and self.turns == other.turns
+        )
 
-        # action must be a valid move
-        if action == self.n * self.n + 1:
-            return b, self.getNextPlayer(player)
+    def clone(self) -> 'TicTacToeGame':
+        g = TicTacToeGame()
+        g._board = self._board
+        g._player = self._player
+        g.turns = self.turns
+        return g
 
-        move = (action // self.n, action % self.n)
-        b.execute_move(move, player)
-        return b.pieces, self.getNextPlayer(player)
+    @staticmethod
+    def action_size() -> int:
+        return ACTION_SIZE
 
-    def getValidMoves(self, board, player):
+    @staticmethod
+    def observation_size() -> Tuple[int, int, int]:
+        return OBSERVATION_SIZE
+
+    def valid_moves(self):
         # return a fixed size binary vector
-        valids = [0] * self.getActionSize()
-        b = Board(self.n)
-        b.pieces = board
+        valids = [0] * self.action_size()
 
-        legalMoves = b.get_legal_moves(player)
-        if len(legalMoves) == 0:
-            valids[-1] = 1
-            return np.array(valids)
+        for x, y in self._board.get_legal_moves(self.current_player()):
+            valids[self._board.n * x + y] = 1
 
-        for x, y in legalMoves:
-            valids[self.n * x + y] = 1
+        return np.array(valids, dtype=np.intc)
 
-        return np.array(valids)
+    def play_action(self, action: int) -> None:
+        move = (action // self._board.n, action % self._board.n)
+        self._board.execute_move(move, self.current_player())
+        self._update_turn()
 
-    def getGameEnded(self, board, player):
-        # return 0 if not ended, 1 if player 1 won, -1 if player 1 lost
-        player = self._player_range(player)
-        b = Board(self.n)
-        b.pieces = board
+    def win_state(self) -> Tuple[bool, int]:
+        if self._board.is_win(self.current_player()):
+            return True, self.current_player()
+        if self._board.is_win(-self.current_player()):
+            return True, -self.current_player()
+        if self._board.has_legal_moves():
+            return False, 0
+        # Draw
+        return True, 0
 
-        if b.is_win(player):
-            return 1
-        if b.is_win(-player):
-            return -1
-        if b.has_legal_moves():
-            return 0
-        # draw has a very little value 
-        return -1e-4
+    def observation(self):
+        return np.expand_dims(np.asarray(self._board.pieces), axis=0)
 
-    def getCanonicalForm(self, board, player, copy=True):
-        # return state if player==1, else return -state if player==-1
-        return board * self._player_range(player)
-
-    def getSymmetries(self, board, pi):
+    def symmetries(self, pi: np.ndarray) -> List[Tuple[Any, int]]:
         # mirror, rotational
-        assert (len(pi) == self.n ** 2 + 1)  # 1 for pass
-        pi_board = np.reshape(pi[:-1], (self.n, self.n))
+        assert (len(pi) == self._board.n ** 2)
+
+        pi_board = np.reshape(pi[:-1], (self._board.n, self._board.n))
         l = []
 
         for i in range(1, 5):
             for j in [True, False]:
-                newB = np.rot90(board, i)
-                newPi = np.rot90(pi_board, i)
+                new_b = np.rot90(np.asarray(self._board.pieces), i)
+                new_pi = np.rot90(pi_board, i)
                 if j:
-                    newB = np.fliplr(newB)
-                    newPi = np.fliplr(newPi)
-                l += [(newB, list(newPi.ravel()) + [pi[-1]])]
-        return l
+                    new_b = np.fliplr(new_b)
+                    new_pi = np.fliplr(new_pi)
 
-    def stringRepresentation(self, board):
-        # 8x8 numpy array (canonical board)
-        return board.tostring()
+                gs = self.clone()
+                gs._board = new_b
+                l.append((gs, new_pi.ravel()))
+
+        return l
 
 
 def display(board):

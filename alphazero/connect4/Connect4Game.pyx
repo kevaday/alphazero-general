@@ -11,8 +11,9 @@ DEFAULT_HEIGHT = 6
 DEFAULT_WIDTH = 7
 DEFAULT_WIN_LENGTH = 4
 NUM_PLAYERS = 2
-NUM_CHANNELS = 1
 MAX_TURNS = 42
+MULTI_PLANE_OBSERVATION = True
+NUM_CHANNELS = 4 if MULTI_PLANE_OBSERVATION else 1
 
 
 class Connect4Game(GameState):
@@ -21,7 +22,6 @@ class Connect4Game(GameState):
     """
     def __init__(self):
         super().__init__(self._get_board())
-        self.turns = 0
 
     @staticmethod
     def _get_board():
@@ -53,26 +53,27 @@ class Connect4Game(GameState):
 
     def play_action(self, action: int) -> None:
         self._board.add_stone(action, self.current_player())
-        self._player *= -1
-        self.turns += 1
+        self._update_turn()
 
     def win_state(self) -> Tuple[bool, int]:
         return self._board.get_win_state()
 
     def observation(self):
-        """
-        pieces = np.asarray(self._board.pieces)
-        player1 = np.where(pieces == self.get_players()[0], 1, 0)
-        player2 = np.where(pieces == self.get_players()[1], 1, 0)
-        colour = np.full_like(pieces, self.get_players().index(self.current_player()))
-        turn = np.full_like(pieces, self.turns / MAX_TURNS)
+        if MULTI_PLANE_OBSERVATION:
+            pieces = np.asarray(self._board.pieces)
+            player1 = np.where(pieces == self.get_players()[0], 1, 0)
+            player2 = np.where(pieces == self.get_players()[1], 1, 0)
+            colour = np.full_like(pieces, self.get_players().index(self.current_player()))
+            turn = np.full_like(pieces, self.turns / MAX_TURNS)
+            return np.array([player1, player2, colour, turn], dtype=np.intc)
 
-        return np.array([player1, player2, colour, turn], dtype=np.intc)
-        """
-        return np.asarray(self._board.pieces)
+        else:
+            return np.expand_dims(np.asarray(self._board.pieces), axis=0)
 
     def symmetries(self, pi) -> List[Tuple[Any, int]]:
-        return [(np.copy(self.observation()), pi), (self.observation()[:, :, ::-1], pi[::-1])]
+        new_state = self.clone()
+        new_state._board.pieces = self._board.pieces[:, ::-1]
+        return [(self.clone(), pi), (new_state, pi[::-1])]
 
 
 def display(board, player=None):

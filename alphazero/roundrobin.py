@@ -38,9 +38,8 @@ if __name__ == '__main__':
         f'Comparing {model_count} different models in {total_games} total games')
     win_matrix = np.zeros((model_count, model_count))
 
-    g = Game()
-    nnet1 = nn(g, args)
-    nnet2 = nn(g, args)
+    nnet1 = nn(Game, args)
+    nnet2 = nn(Game, args)
 
     for i in range(model_count - 1):
         for j in range(i + 1, model_count):
@@ -63,13 +62,13 @@ if __name__ == '__main__':
                     p2 = nnet2.process
                 else:
                     cls = MCTSPlayer if args.arenaMCTS else NNPlayer
-                    p1 = cls(g, nnet1, args=args).play
-                    p2 = cls(g, nnet2, args=args).play
+                    p1 = cls(nnet1, args=args)
+                    p2 = cls(nnet2, args=args)
             else:
-                p1 = (MCTSPlayer if args.arenaMCTS else NNPlayer)(g, nnet1, args=args).play
-                p2 = RandomPlayer(g).play
+                p1 = (MCTSPlayer if args.arenaMCTS else NNPlayer)(nnet1, args=args)
+                p2 = RandomPlayer()
 
-            arena = Arena([p1, p2], g, use_batched_mcts=(args.arenaBatched and file2.name != 'random'), args=args)
+            arena = Arena([p1, p2], Game, use_batched_mcts=(args.arenaBatched and file2.name != 'random'), args=args)
             wins, draws, winrates = arena.play_games(args.arenaCompare)
             win_matrix[i, j] = wins[0] + 0.5 * draws
             win_matrix[j, i] = wins[1] + 0.5 * draws

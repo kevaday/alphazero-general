@@ -132,7 +132,6 @@ class Arena:
 
             index = state.current_player() if not _player_to_index else _player_to_index[state.current_player()]
             action = self.players[index](state, turns)
-            print(type(self.players[index].player))
 
             # valids = state.valid_moves()
             # assert valids[action] > 0, ' '.join(map(str, [action, index, state.current_player(), turns, valids]))

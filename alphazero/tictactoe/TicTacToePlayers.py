@@ -1,24 +1,24 @@
-class HumanTicTacToePlayer():
-    def __init__(self, game):
-        self.game = game
+from alphazero.GenericPlayers import BasePlayer
+from alphazero.Game import GameState
 
-    def play(self, board, turn):
-        # display(board)
-        valid = self.game.getValidMoves(board, 1)
+
+class HumanTicTacToePlayer(BasePlayer):
+    def play(self, state: GameState, turn: int) -> int:
+        valid = state.valid_moves()
+        """
         for i in range(len(valid)):
             if valid[i]:
-                print(int(i/self.game.n), int(i % self.game.n))
+                print(int(i / state._board.n), int(i % state._board.n))
+        """
+
         while True:
-            # Python 3.x
-            a = input()
-            # Python 2.x
-            # a = raw_input()
+            a = input('Enter a move: ')
 
             x, y = [int(x) for x in a.split(' ')]
-            a = self.game.n * x + y if x != -1 else self.game.n ** 2
+            a = state._board.n * x + y if x != -1 else state._board.n ** 2
             if valid[a]:
                 break
             else:
-                print('Invalid')
+                print('Invalid move entered.')
 
         return a

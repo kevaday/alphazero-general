@@ -13,10 +13,10 @@ args = get_args(dotdict({
     'startIter': 1,
     'numIters': 1000,
     'numWarmupIters': 1,
-    'process_batch_size': 2048,
+    'process_batch_size': 128,
     'train_batch_size': 128,
     # should preferably be a multiple of process_batch_size and workers
-    'gamesPerIteration': 2048 * mp.cpu_count(),
+    'gamesPerIteration': 128 * mp.cpu_count(),
     'symmetricSamples': True,
     'numMCTSSims': 50,
     'numFastSims': 5,
@@ -24,7 +24,7 @@ args = get_args(dotdict({
     'tempThreshold': 20,
     'temp': 1,
     'compareWithBaseline': True,
-    'arenaCompareBaseline': 32,
+    'arenaCompareBaseline': 16,
     'arenaCompare': 256,
     'arena_batch_size': 64,
     'arenaTemp': 0.1,
@@ -42,9 +42,9 @@ args = get_args(dotdict({
 }),
     model_gating=False,
 
-    lr=0.002,
-    num_channels=128,
-    depth=10,
+    lr=0.01,
+    num_channels=64,
+    depth=12,
     value_head_channels=16,
     policy_head_channels=16,
     value_dense_layers=[512, 256],
@@ -52,7 +52,6 @@ args = get_args(dotdict({
 )
 
 if __name__ == "__main__":
-    g = Game()
-    nnet = nn(g, args)
-    c = Coach(g, nnet, args)
+    nnet = nn(Game, args)
+    c = Coach(Game, nnet, args)
     c.learn()

@@ -40,14 +40,21 @@ cdef class Board():
         # Set up the initial 4 pieces.
         self.pieces[self.n//2-1,self.n//2] = 1
         self.pieces[self.n//2,self.n//2-1] = 1
-        self.pieces[self.n//2-1,self.n//2-1] = -1;
-        self.pieces[self.n//2,self.n//2] = -1;
+        self.pieces[self.n//2-1,self.n//2-1] = -1
+        self.pieces[self.n//2,self.n//2] = -1
+
+    def __getstate__(self):
+        return self.n, np.asarray(self.pieces)
+
+    def __setstate__(self, state):
+        self.n, pieces = state
+        self.pieces = np.asarray(pieces)
 
     # add [][] indexer syntax to the Board
     def __getitem__(self, index):
         return self.pieces[index]
 
-    def countDiff(self, int color):
+    def count_diff(self, int color):
         """Counts the # pieces of the given color
         (1 for white, -1 for black, 0 for empty spaces)"""
         cdef int count = 0

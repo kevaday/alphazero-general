@@ -1,113 +1,92 @@
-from alphazero.Game import Game
+from alphazero.Game import GameState
 from alphazero.gobang.GobangLogic import Board
+
+from typing import List, Tuple, Any
 
 import numpy as np
 
 NUM_PLAYERS = 2
 NUM_CHANNELS = 1
 
+BOARD_SIZE = 15
+NUM_IN_ROW = 5
 
-class GobangGame(Game):
-    def __init__(self, n=15, nir=5):
-        self.n = n
-        self.n_in_row = nir
+ACTION_SIZE = BOARD_SIZE ** 2
+OBSERVATION_SIZE = (NUM_CHANNELS, BOARD_SIZE, BOARD_SIZE)
 
-    def getInitBoard(self):
-        # return initial board (numpy board)
-        b = Board(self.n)
-        return np.array(b.pieces)
 
-    def getBoardSize(self):
-        # (a,b) tuple
-        return self.n, self.n
+class GobangGame(GameState):
+    def __init__(self):
+        super().__init__(self._get_board())
 
-    def getActionSize(self):
-        # return number of actions
-        return self.n * self.n + 1
+    @staticmethod
+    def _get_board():
+        return Board(BOARD_SIZE, NUM_IN_ROW)
 
-    def getObservationSize(self):
-        return NUM_CHANNELS, self.n, self.n
+    def __eq__(self, other: 'GobangGame') -> bool:
+        return (
+            self._board.pieces == other._board.pieces
+            and self._board.n == other._board.n
+            and self._board.n_in_row == other._board.n_in_row
+            and self._player == other._player
+            and self.turns == other.turns
+        )
 
-    def getPlayers(self):
-        return list(range(NUM_PLAYERS))
+    def clone(self) -> 'GobangGame':
+        g = GobangGame()
+        g._board = self._board
+        g._player = self._player
+        g.turns = self.turns
+        return g
 
-    def getNextState(self, board, player, action, copy=True):
-        # if player takes action on board, return next (board,player)
-        b = Board(self.n)
-        b.pieces = np.copy(board) if copy else board
+    @staticmethod
+    def action_size() -> int:
+        return ACTION_SIZE
 
-        # action must be a valid move
-        if action == self.n * self.n + 1:
-            return b, self.getNextPlayer(player)
+    @staticmethod
+    def observation_size() -> Tuple[int, int, int]:
+        return OBSERVATION_SIZE
 
-        move = (action // self.n, action % self.n)
-        b.execute_move(move, player)
-        return b.pieces, self.getNextPlayer(player)
-
-    def getValidMoves(self, board, player):
+    def valid_moves(self):
         # return a fixed size binary vector
-        valids = [0] * self.getActionSize()
-        b = Board(self.n)
-        b.pieces = board
+        valids = [0] * self.action_size()
 
-        legalMoves = b.get_legal_moves(player)
-        if len(legalMoves) == 0:
-            valids[-1] = 1
-            return np.array(valids)
+        for x, y in self._board.get_legal_moves(self.current_player()):
+            valids[self._board.n * x + y] = 1
 
-        for x, y in legalMoves:
-            valids[self.n * x + y] = 1
+        return np.array(valids, dtype=np.intc)
 
-        return np.array(valids)
+    def play_action(self, action: int) -> None:
+        move = (action // self._board.n, action % self._board.n)
+        self._board.execute_move(move, self.current_player())
+        self._update_turn()
 
-    def getGameEnded(self, board, player):
-        # return 0 if not ended, 1 if player 1 won, -1 if player 1 lost
-        # player = 1
-        b = Board(self.n)
-        b.pieces = board
-        n = self.n_in_row
+    def win_state(self) -> Tuple[bool, int]:
+        return self._board.get_win_state()
 
-        for w in range(self.n):
-            for h in range(self.n):
-                if (w in range(self.n - n + 1) and board[w][h] != 0 and
-                        len(set(board[i][h] for i in range(w, w + n))) == 1):
-                    return board[w][h]
-                if (h in range(self.n - n + 1) and board[w][h] != 0 and
-                        len(set(board[w][j] for j in range(h, h + n))) == 1):
-                    return board[w][h]
-                if (w in range(self.n - n + 1) and h in range(self.n - n + 1) and board[w][h] != 0 and
-                        len(set(board[w + k][h + k] for k in range(n))) == 1):
-                    return board[w][h]
-                if (w in range(self.n - n + 1) and h in range(n - 1, self.n) and board[w][h] != 0 and
-                        len(set(board[w + l][h - l] for l in range(n))) == 1):
-                    return board[w][h]
-        if b.has_legal_moves():
-            return 0
-        return -1e-4
+    def observation(self):
+        return np.expand_dims(np.asarray(self._board.pieces), axis=0)
 
-    def getCanonicalForm(self, board, player, copy=True):
-        # return state if player==0, else return -state if player==1
-        return board * (1 if player == self.getPlayers()[0] else -1)
-
-    def getSymmetries(self, board, pi):
+    def symmetries(self, pi: np.ndarray) -> List[Tuple[Any, int]]:
         # mirror, rotational
-        assert(len(pi) == self.n**2 + 1)  # 1 for pass
-        pi_board = np.reshape(pi[:-1], (self.n, self.n))
+        assert (len(pi) == self._board.n ** 2)
+
+        pi_board = np.reshape(pi[:-1], (self._board.n, self._board.n))
         l = []
 
         for i in range(1, 5):
             for j in [True, False]:
-                newB = np.rot90(board, i)
-                newPi = np.rot90(pi_board, i)
+                new_b = np.rot90(np.asarray(self._board.pieces), i)
+                new_pi = np.rot90(pi_board, i)
                 if j:
-                    newB = np.fliplr(newB)
-                    newPi = np.fliplr(newPi)
-                l += [(newB, list(newPi.ravel()) + [pi[-1]])]
-        return l
+                    new_b = np.fliplr(new_b)
+                    new_pi = np.fliplr(new_pi)
 
-    def stringRepresentation(self, board):
-        # 8x8 numpy array (canonical board)
-        return board.tostring()
+                gs = self.clone()
+                gs._board = new_b
+                l.append((gs, new_pi.ravel()))
+
+        return l
 
 
 def display(board):

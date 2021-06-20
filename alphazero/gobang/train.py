@@ -28,7 +28,6 @@ args = get_args(
 
 
 if __name__ == "__main__":
-    g = Game()
-    nnet = nn(g, args)
-    c = Coach(g, nnet, args)
+    nnet = nn(Game, args)
+    c = Coach(Game, nnet, args)
     c.learn()
