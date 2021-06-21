@@ -10,7 +10,6 @@
 from libc.math cimport sqrt
 
 import numpy as np
-import random
 import cython
 
 np.seterr(all='raise')
@@ -65,8 +64,8 @@ cdef class Node:
         for a in range(len(v)):
             if v[a] == 1:
                 self._children.append(Node(a, self.cpuct))
-        # shuffle
-        random.shuffle(self._children)
+        # shuffle children
+        np.random.shuffle(self._children)
 
     cdef update_policy(self, float[:] pi):
         cdef Node c
