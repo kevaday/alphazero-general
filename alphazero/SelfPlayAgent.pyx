@@ -144,7 +144,7 @@ class SelfPlayAgent(mp.Process):
             action = np.random.choice(self.games[i].action_size(), p=policy)
             if not self.fast and not self._is_arena:
                 self.histories[i].append((
-                    self.games[i],
+                    self.games[i].clone(),
                     self.mcts[i].probs(self.games[i]),
                     self.mcts[i].value()
                 ))
@@ -158,7 +158,7 @@ class SelfPlayAgent(mp.Process):
 
             game_over, value = self.games[i].win_state()
             if game_over:
-                self.result_queue.put((self.games[i], value, self.id))
+                self.result_queue.put((self.games[i].clone(), value, self.id))
                 lock = self.games_played.get_lock()
                 lock.acquire()
                 if self.games_played.value < self.args.gamesPerIteration:
@@ -167,7 +167,7 @@ class SelfPlayAgent(mp.Process):
                     if not self._is_arena:
                         for hist in self.histories[i]:
                             if self.args.symmetricSamples:
-                                data = self.games[i].symmetries(hist[1])
+                                data = hist[0].symmetries(hist[1])
                             else:
                                 data = ((hist[0], hist[1]),)
 
