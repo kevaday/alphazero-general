@@ -46,7 +46,6 @@ class SelfPlayAgent(mp.Process):
         self.result_queue = result_queue
         self.games = []
         self.histories = []
-        self.turn = []
         self.next_reset = []
         self.mcts = []
         self.games_played = games_played
@@ -64,7 +63,6 @@ class SelfPlayAgent(mp.Process):
         for _ in range(self.batch_size):
             self.games.append(self.game_cls())
             self.histories.append([])
-            self.turn.append(1)
             self.next_reset.append(0)
             self.mcts.append(MCTS(self.args.cpuct))
 
@@ -139,7 +137,7 @@ class SelfPlayAgent(mp.Process):
 
     def playMoves(self):
         for i in range(self.batch_size):
-            temp = int(self.turn[i] < self.args.tempThreshold)
+            temp = int(self.games[i].turns < self.args.tempThreshold)
             policy = self.mcts[i].probs(self.games[i], temp)
             action = np.random.choice(self.games[i].action_size(), p=policy)
             if not self.fast and not self._is_arena:
@@ -151,10 +149,10 @@ class SelfPlayAgent(mp.Process):
 
             self.mcts[i].update_root(self.games[i], action)
             self.games[i].play_action(action)
-            self.turn[i] += 1
-            if self.args.mctsResetThreshold and self.turn[i] >= self.next_reset[i]:
+            self.games[i].turns += 1
+            if self.args.mctsResetThreshold and self.games[i].turns >= self.next_reset[i]:
                 self.mcts[i] = MCTS(self.args.cpuct)
-                self.next_reset[i] = self.turn[i] + self.args.mctsResetThreshold
+                self.next_reset[i] = self.games[i].turns + self.args.mctsResetThreshold
 
             game_over, value = self.games[i].win_state()
             if game_over:
@@ -179,7 +177,6 @@ class SelfPlayAgent(mp.Process):
                                 ))
                     self.games[i] = self.game_cls()
                     self.histories[i] = []
-                    self.turn[i] = 1
                     self.mcts[i] = MCTS(self.args.cpuct)
                 else:
                     lock.release()

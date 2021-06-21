@@ -172,10 +172,7 @@ cdef class MCTS:
         return counts
 
     cpdef probs(self, gs, temp=1):
-        counts = np.zeros(gs.action_size())
-        cdef Node c
-        for c in self._root._children:
-            counts[c.a] = c.n
+        counts = self.counts(gs)
 
         if temp == 0:
             bestA = np.argmax(counts)
@@ -184,7 +181,7 @@ cdef class MCTS:
             return probs
 
         try:
-            probs = counts ** (1.0/temp)
+            probs = (counts / np.sum(counts)) ** (1.0/temp)
             probs /= np.sum(probs)
             return probs
         except OverflowError:

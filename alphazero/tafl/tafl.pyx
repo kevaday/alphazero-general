@@ -20,9 +20,6 @@ GAME_VARIANT = variants.hnefatafl
 b = _get_board()
 ACTION_SIZE = b.width * b.height * (b.width + b.height - 2)
 
-NUM_PLAYERS = 2
-PLAYERS = list(range(NUM_PLAYERS))
-
 NUM_STACKED_OBSERVATIONS = 0
 NUM_BASE_CHANNELS = 5
 NUM_CHANNELS = NUM_BASE_CHANNELS * (NUM_STACKED_OBSERVATIONS + 1)
@@ -30,10 +27,6 @@ OBS_SIZE = (NUM_CHANNELS, b.width, b.height)
 del b
 
 DRAW_MOVE_COUNT = 200
-# Used for checking pairs of moves from same player
-# Changing this breaks repeat check
-_ONE_MOVE = 2
-_TWO_MOVES = _ONE_MOVE * 2
 
 
 def _board_from_numpy(np_board: np.ndarray) -> Board:

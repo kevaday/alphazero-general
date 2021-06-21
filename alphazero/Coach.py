@@ -170,6 +170,7 @@ class Coach:
                 print()
 
         except KeyboardInterrupt:
+            """
             if self.completed.value != self.args.workers:
                 self.stop_agents.set()
                 if self.games_played.value > 0:
@@ -177,6 +178,8 @@ class Coach:
                     try: self.processGameResults(const_i)
                     except ZeroDivisionError: pass
                 self.killSelfPlayAgents()
+            """
+            pass
 
         self.writer.close()
 
