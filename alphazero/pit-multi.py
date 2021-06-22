@@ -4,8 +4,8 @@ from alphazero.GenericPlayers import *
 from alphazero.MCTS import MCTS
 from alphazero.Arena import Arena
 from alphazero.NNetWrapper import NNetWrapper as nn
-from alphazero.othello.special.NNetSpecialWrapper import NNetSpecialWrapper as nns
-from alphazero.othello.OthelloGame import OthelloGame as Game
+from alphazero.envs.othello import NNetSpecialWrapper as nns
+from alphazero.envs.othello import OthelloGame as Game
 from alphazero.utils import *
 from tensorboardX import SummaryWriter
 from pathlib import Path

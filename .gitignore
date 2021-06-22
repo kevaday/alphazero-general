@@ -5,4 +5,4 @@ hnefatafl/__pycache__
 checkpoint
 data
 runs
-alphazero/othello/special
+alphazero/envs/othello/special

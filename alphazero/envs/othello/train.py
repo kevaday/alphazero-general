@@ -2,8 +2,8 @@ import pyximport; pyximport.install()
 
 from alphazero.Coach import Coach, get_args
 from alphazero.NNetWrapper import NNetWrapper as nn
-from alphazero.othello.OthelloGame import OthelloGame as Game
-from alphazero.othello.OthelloPlayers import GreedyOthelloPlayer
+from alphazero.envs.othello.OthelloGame import OthelloGame as Game
+from alphazero.envs.othello.OthelloPlayers import GreedyOthelloPlayer
 
 
 args = get_args(

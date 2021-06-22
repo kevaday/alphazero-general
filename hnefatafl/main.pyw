@@ -15,7 +15,7 @@ from PyQt5.QtWidgets import QApplication, QListWidgetItem, QFileDialog
 from boardgame.net import Message, byte
 from hnefatafl.gui import Ui_MainWindow, Ui_FrmLocalGame, Ui_FrmOnlineConnect, \
     Ui_FrmOnlineGame, Ui_DialogMessage, Ui_FrmListGames, Ui_FrmGameType, show_dialog
-from hnefatafl.engine import Board, PieceType, Game, bool_to_colour, is_turn, variants
+from hnefatafl.engine import Board, Game, bool_to_colour, is_turn, variants
 from hnefatafl.bots import AlphaZeroBot
 from hnefatafl.net import SERVER_ADDR, PORT, TIMEOUT
 from hnefatafl.net.client import Client
@@ -29,7 +29,7 @@ class SinglePlayerWindow(Ui_FrmLocalGame):
         self.bot_white = bool(random.randint(0, 1))
         super().__init__(game=game, playable=True, is_white=not self.bot_white)
 
-        from alphazero.tafl.train import args
+        from alphazero.envs.tafl.train import args
         args.numMCTSSims = 2000
         args.temp = 0.1
         args.tempThreshold = 2

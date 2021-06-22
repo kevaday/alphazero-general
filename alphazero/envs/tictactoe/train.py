@@ -2,7 +2,7 @@ import pyximport; pyximport.install()
 
 from alphazero.Coach import Coach, get_args
 from alphazero.NNetWrapper import NNetWrapper as nn
-from alphazero.tictactoe.TicTacToeGame import TicTacToeGame as Game
+from alphazero.envs.tictactoe.TicTacToeGame import TicTacToeGame as Game
 from alphazero.GenericPlayers import RandomPlayer
 
 

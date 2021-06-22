@@ -1,5 +1,4 @@
 # cython: language_level=3
-from hnefatafl import BOARD_FILE, SAVE_FILE
 from hnefatafl.engine import variants
 from boardgame import errors, BaseTile, BaseBoard, BasePiece, Move
 
@@ -381,9 +380,10 @@ class Board(BaseBoard):
         self.__check_surround()
         self._check_kill(self.get_piece(new_tile))
 
-        piece_type = self.get_team_colour(piece.type)
-        if not self.__first_repeat and self._repeat_exceeded(piece_type):
-            self.__first_repeat = piece_type
+        if self.max_repeats:
+            piece_type = self.get_team_colour(piece.type)
+            if not self.__first_repeat and self._repeat_exceeded(piece_type):
+                self.__first_repeat = piece_type
 
         if _check_game_end:
             self._update_game_over()

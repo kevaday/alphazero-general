@@ -3,7 +3,6 @@ pyximport.install()
 
 from alphazero.NNetWrapper import NNetWrapper as nn
 from alphazero.GenericPlayers import *
-from alphazero.MCTS import MCTS
 from alphazero.Arena import Arena
 from pathlib import Path
 from glob import glob
@@ -13,8 +12,8 @@ import pprint
 import choix
 
 if __name__ == '__main__':
-    from alphazero.connect4.Connect4Game import Connect4Game as Game
-    from alphazero.connect4.train import args
+    from alphazero.envs.connect4.Connect4Game import Connect4Game as Game
+    from alphazero.envs.connect4.train import args
 
     print('Args:')
     pprint.pprint(args)

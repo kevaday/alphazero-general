@@ -1,43 +1,42 @@
-from alphazero.Game import GameState
-from alphazero.gobang.GobangLogic import Board
-
+# cython: language_level=3
 from typing import List, Tuple, Any
+
+from alphazero.envs.othello.OthelloLogic import Board
+from alphazero.Game import GameState
 
 import numpy as np
 
 NUM_PLAYERS = 2
 NUM_CHANNELS = 1
-
-BOARD_SIZE = 15
-NUM_IN_ROW = 5
-
+BOARD_SIZE = 8
 ACTION_SIZE = BOARD_SIZE ** 2
 OBSERVATION_SIZE = (NUM_CHANNELS, BOARD_SIZE, BOARD_SIZE)
 
 
-class GobangGame(GameState):
+class OthelloGame(GameState):
     def __init__(self):
         super().__init__(self._get_board())
 
-    @staticmethod
-    def _get_board():
-        return Board(BOARD_SIZE, NUM_IN_ROW)
+    def __hash__(self) -> int:
+        return hash(self._board.pieces.tobytes() + bytes([self.turns]) + bytes([self._player]))
 
-    def __eq__(self, other: 'GobangGame') -> bool:
+    def __eq__(self, other: 'GameState') -> bool:
         return (
-            self._board.pieces == other._board.pieces
-            and self._board.n == other._board.n
-            and self._board.n_in_row == other._board.n_in_row
+            np.asarray(self._board.pieces) == np.asarray(other._board.pieces)
             and self._player == other._player
             and self.turns == other.turns
         )
 
-    def clone(self) -> 'GobangGame':
-        g = GobangGame()
-        g._board = self._board
-        g._player = self._player
-        g.turns = self.turns
-        return g
+    @staticmethod
+    def _get_board():
+        return Board(BOARD_SIZE)
+
+    def clone(self) -> 'OthelloGame':
+        game = OthelloGame()
+        game._board.pieces = np.copy(np.asarray(self._board.pieces))
+        game._player = self._player
+        game.turns = self.turns
+        return game
 
     @staticmethod
     def action_size() -> int:
@@ -62,12 +61,18 @@ class GobangGame(GameState):
         self._update_turn()
 
     def win_state(self) -> Tuple[bool, int]:
-        return self._board.get_win_state()
+        if self._board.has_legal_moves(self.current_player()):
+            return False, 0
+        if self._board.has_legal_moves(-self.current_player()):
+            return False, 0
+        if self._board.count_diff(self.current_player()) > 0:
+            return True, self.current_player()
+        return True, -self.current_player()
 
     def observation(self):
         return np.expand_dims(np.asarray(self._board.pieces), axis=0)
 
-    def symmetries(self, pi: np.ndarray) -> List[Tuple[Any, int]]:
+    def symmetries(self, pi) -> List[Tuple[Any, int]]:
         # mirror, rotational
         assert (len(pi) == self._board.n ** 2)
 

@@ -2,9 +2,7 @@ import pyximport; pyximport.install()
 
 from alphazero.Coach import Coach, get_args
 from alphazero.NNetWrapper import NNetWrapper as nn
-from alphazero.tafl.tafl import TaflGame as Game, NUM_STACKED_OBSERVATIONS, DRAW_MOVE_COUNT
-from alphazero.tafl.players import GreedyTaflPlayer
-
+from alphazero.envs.tafl.tafl import TaflGame as Game, NUM_STACKED_OBSERVATIONS, DRAW_MOVE_COUNT
 
 args = get_args(
     run_name='hnefatafl',
@@ -37,8 +35,7 @@ args = get_args(
     train_batch_size=1024,
     arena_batch_size=32,
     arenaCompare=32*4,
-    # train_steps_per_iteration=128,
-    gamesPerIteration=2*32*4,
+    gamesPerIteration=32*4,
     
     lr=0.01,
     num_channels=128,

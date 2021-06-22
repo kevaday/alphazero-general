@@ -1,5 +1,5 @@
-from hnefatafl.engine import Move, PieceType, Board, BoardGameException
-from alphazero.tafl.tafl import get_action, TaflGame
+from hnefatafl.engine import Move, BoardGameException
+from alphazero.envs.tafl.tafl import get_action
 from alphazero.GenericPlayers import BasePlayer
 from alphazero.Game import GameState
 

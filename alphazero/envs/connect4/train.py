@@ -4,7 +4,7 @@ from torch import multiprocessing as mp
 
 from alphazero.Coach import Coach, get_args
 from alphazero.NNetWrapper import NNetWrapper as nn
-from alphazero.connect4.Connect4Game import Connect4Game as Game
+from alphazero.envs.connect4.Connect4Game import Connect4Game as Game
 from alphazero.utils import dotdict
 
 args = get_args(dotdict({

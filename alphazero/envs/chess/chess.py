@@ -1,7 +1,6 @@
 from alphazero.Game import GameState
 from typing import List, Tuple, Any
 
-import numpy as np
 import chess
 import string
 
@@ -31,12 +30,12 @@ def _int2base(x, base, length):
 
     while x:
         digits.append(DIGS[int(x % base)])
-        x = int(x / base)
+        x //= base
 
     if sign < 0:
         digits.append('-')
 
-    while len(digits) < length: digits.extend(["0"])
+    while len(digits) < length: digits.append('0')
     return list(map(lambda x: int(x, base), digits))
 
 

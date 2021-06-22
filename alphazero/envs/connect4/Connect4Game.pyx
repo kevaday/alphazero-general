@@ -3,7 +3,7 @@
 from typing import List, Tuple, Any
 
 from alphazero.Game import GameState
-from alphazero.connect4.Connect4Logic import Board
+from alphazero.envs.connect4.Connect4Logic import Board
 
 import numpy as np
 

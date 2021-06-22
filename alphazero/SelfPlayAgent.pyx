@@ -9,23 +9,6 @@ import itertools
 from alphazero.MCTS import MCTS
 
 
-def get_game_results(result_queue, game_cls, _get_index=None):
-    player_to_index = {p: i for i, p in enumerate(game_cls.get_players())}
-
-    num_games = result_queue.qsize()
-    wins = [0] * len(game_cls.get_players())
-    draws = 0
-    for _ in range(num_games):
-        _, value, agent_id = result_queue.get()
-        if value != 0:
-            index = _get_index(value, agent_id) if _get_index else player_to_index[value]
-            wins[index] += 1
-        else:
-            draws += 1
-
-    return wins, draws
-
-
 class SelfPlayAgent(mp.Process):
     def __init__(self, id, game_cls, ready_queue, batch_ready, batch_tensor, policy_tensor,
                  value_tensor, output_queue, result_queue, complete_count, games_played,

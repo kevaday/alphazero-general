@@ -1,7 +1,7 @@
 from typing import List, Tuple, Any
 
 from alphazero.Game import GameState
-from alphazero.tictactoe.TicTacToeLogic import Board
+from alphazero.envs.tictactoe.TicTacToeLogic import Board
 
 import numpy as np
 

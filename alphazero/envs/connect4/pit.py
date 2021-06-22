@@ -11,9 +11,9 @@ use this script to play any two agents against each other, or play manually with
 any agent.
 """
 if __name__ == '__main__':
-    from alphazero.connect4.Connect4Game import Connect4Game as Game, display
-    from alphazero.connect4.Connect4Players import HumanConnect4Player, OneStepLookaheadConnect4Player
-    from alphazero.connect4.train import args
+    from alphazero.envs.connect4.Connect4Game import Connect4Game as Game, display
+    from alphazero.envs.connect4.Connect4Players import HumanConnect4Player
+    from alphazero.envs.connect4.train import args
 
     import random
 

@@ -73,8 +73,9 @@ class NNetArchitecture(nn.Module):
 
         self.res_layers = []
         for _ in range(args.depth):
-            self.res_layers.append(ResidualBlock(
-                args.num_channels, args.num_channels))
+            self.res_layers.append(
+                ResidualBlock(args.num_channels, args.num_channels)
+            )
         self.resnet = nn.Sequential(*self.res_layers)
 
         self.v_conv = conv1x1(args.num_channels, args.value_head_channels)

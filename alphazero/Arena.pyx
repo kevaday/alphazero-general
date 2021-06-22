@@ -2,9 +2,9 @@
 
 from alphazero.Game import GameState
 from alphazero.GenericPlayers import BasePlayer
-from alphazero.SelfPlayAgent import SelfPlayAgent, get_game_results
+from alphazero.SelfPlayAgent import SelfPlayAgent
 from alphazero.pytorch_classification.utils import Bar, AverageMeter
-from alphazero.utils import dotdict
+from alphazero.utils import dotdict, get_game_results
 
 from typing import Callable, List, Tuple
 from queue import Empty
@@ -123,15 +123,14 @@ class Arena:
         [p.reset() for p in self.players]
 
         state = self.game_cls()
-        turns = 0
 
         while True:
-            if verbose:
-                print("Turn ", str(turns), "Player ", str(state.current_player()))
-                self.display(state)
-
             index = state.current_player() if not _player_to_index else _player_to_index[state.current_player()]
-            action = self.players[index](state, turns)
+            action = self.players[index](state, state.turns)
+
+            if verbose:
+                print('Turn ', str(state.turns), 'Player ', str(state.current_player()), 'Action ', action)
+                self.display(state)
 
             # valids = state.valid_moves()
             # assert valids[action] > 0, ' '.join(map(str, [action, index, state.current_player(), turns, valids]))
@@ -139,11 +138,10 @@ class Arena:
             [p.update(state, action) for p in self.players]
             state.play_action(action)
             game_over, value = state.win_state()
-            turns += 1
 
             if game_over:
                 if verbose:
-                    print("Game over: Turn ", str(turns), "Result ", str(value))
+                    print("Game over: Turn ", str(state.turns), "Result ", str(value))
                     self.display(state)
 
                 return state, value

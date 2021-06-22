@@ -1,5 +1,5 @@
-from alphazero.SelfPlayAgent import SelfPlayAgent, get_game_results
-from alphazero.utils import get_iter_file, dotdict
+from alphazero.SelfPlayAgent import SelfPlayAgent
+from alphazero.utils import get_iter_file, dotdict, get_game_results
 from alphazero.Arena import Arena
 from alphazero.GenericPlayers import RandomPlayer, NNPlayer, MCTSPlayer
 from alphazero.pytorch_classification.utils import Bar, AverageMeter
@@ -179,7 +179,7 @@ class Coach:
                     except ZeroDivisionError: pass
                 self.killSelfPlayAgents()
             """
-            pass
+            print()
 
         self.writer.close()
 

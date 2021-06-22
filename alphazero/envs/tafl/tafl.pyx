@@ -9,20 +9,24 @@ from typing import List, Tuple, Any
 import numpy as np
 
 
-MAX_REPEATS = 3  # N-fold repetition loss
-
-
 def _get_board():
-    return Board(GAME_VARIANT, max_repeats=MAX_REPEATS, _store_past_states=False)
+    return Board(
+        GAME_VARIANT,
+        max_repeats=MAX_REPEATS,
+        _store_past_states=True,
+        _max_past_states=min((MAX_REPEATS + 1) * NUM_PLAYERS, NUM_STACKED_OBSERVATIONS - 1)
+    )
 
 
 GAME_VARIANT = variants.hnefatafl
+MAX_REPEATS = 3  # N-fold repetition loss
+NUM_PLAYERS = 2
+NUM_STACKED_OBSERVATIONS = 1
+NUM_BASE_CHANNELS = 5
+NUM_CHANNELS = NUM_BASE_CHANNELS * NUM_STACKED_OBSERVATIONS
+
 b = _get_board()
 ACTION_SIZE = b.width * b.height * (b.width + b.height - 2)
-
-NUM_STACKED_OBSERVATIONS = 0
-NUM_BASE_CHANNELS = 5
-NUM_CHANNELS = NUM_BASE_CHANNELS * (NUM_STACKED_OBSERVATIONS + 1)
 OBS_SIZE = (NUM_CHANNELS, b.width, b.height)
 del b
 
@@ -69,19 +73,22 @@ def get_action(board: Board, move: Move) -> int:
     return (board.width + board.height - 2) * (move.tile.x + move.tile.y * board.width) + move_type
 
 
-def _get_observation(board: Board, player_turn: int, const_max_player: int, const_max_turns: int, past_obs: int = 1):
+def _get_observation(board: Board, const_max_player: int, const_max_turns: int, past_obs: int = 1):
     obs = []
 
-    def add_obs(b, turn_num):
+    def add_obs(b):
         game_board = _board_to_numpy(b)
         black = np.where(game_board == PieceType.black.value, 1., 0.)
         white = np.where((game_board == PieceType.white.value) | (game_board == PieceType.king.value), 1., 0.)
         king = np.where(game_board == PieceType.king.value, 1., 0.)
         turn_colour = np.full_like(
             game_board,
-            player_turn / (const_max_player - 1) if const_max_player > 1 else 0
+            2 - b.to_play().value / (const_max_player - 1) if const_max_player > 1 else 0
         )
-        turn_number = np.full_like(game_board, turn_num / const_max_turns if const_max_turns else 0, dtype=np.float32)
+        turn_number = np.full_like(
+            game_board,
+            b.num_turns / const_max_turns if const_max_turns else 0, dtype=np.float32
+        )
         obs.extend([black, white, king, turn_colour, turn_number])
 
     def add_empty():
@@ -89,15 +96,14 @@ def _get_observation(board: Board, player_turn: int, const_max_player: int, cons
 
     if board._store_past_states:
         past = board._past_states.copy()
-        past.append((board, None))
-        past_len = len(past)
+        past.insert(0, (board, None))
         for i in range(past_obs):
-            if past_len < i + 1:
+            if board.num_turns < i:
                 add_empty()
             else:
-                add_obs(past[i][0], past_len-i-1)
+                add_obs(past[i][0])
     else:
-        add_obs(board, board.num_turns)
+        add_obs(board)
 
     return np.array(obs, dtype=np.float32)
 
@@ -115,7 +121,7 @@ class TaflGame(GameState):
 
     @staticmethod
     def _get_player_int(player: PieceType) -> int:
-        return [1, -1][2 - player.value]
+        return (1, -1)[2 - player.value]
 
     def clone(self) -> 'GameState':
         g = TaflGame()
@@ -143,11 +149,11 @@ class TaflGame(GameState):
     def play_action(self, action: int) -> None:
         move = get_move(self._board, action)
         self._board.move(move, _check_game_end=False, _check_valid=False)
-        self._player *= -1
+        self._update_turn()
 
     def win_state(self) -> Tuple[bool, int]:
         # Check if maximum moves have been exceeded
-        if self._board.num_turns >= DRAW_MOVE_COUNT:
+        if self.turns >= DRAW_MOVE_COUNT:
             return True, 0
 
         winner = self._board.get_winner()
@@ -162,10 +168,9 @@ class TaflGame(GameState):
     def observation(self):
         return _get_observation(
             self._board,
-            0 if self.current_player() == 1 else 1,
             NUM_PLAYERS,
             DRAW_MOVE_COUNT,
-            NUM_STACKED_OBSERVATIONS + 1
+            NUM_STACKED_OBSERVATIONS
         )
 
     def symmetries(self, pi: np.ndarray) -> List[Tuple[Any, int]]:
@@ -180,7 +185,7 @@ class TaflGame(GameState):
                     state = np.fliplr(state)
 
                 num_past_states = min(
-                    NUM_STACKED_OBSERVATIONS,
+                    NUM_STACKED_OBSERVATIONS - 1,
                     len(self._board._past_states) if self._board._store_past_states else 0
                 )
                 past_states = [None] * num_past_states
@@ -234,15 +239,17 @@ class TaflGame(GameState):
         return self.current_player() * (1000 * result + black_pieces - white_pieces)
 
 
-if __name__ == '__main__':
-    from hnefatafl.engine import *
-
-    g = TaflGame(variants.brandubh)
+def test_repeat(n):
+    global GAME_VARIANT
+    GAME_VARIANT = variants.hnefatafl
+    g = TaflGame()
     # g.board[0][0].piece = Piece(PieceType(3), 0, 0, 0)
-    board = g.getInitBoard()
-    for _ in range(6):
+    board = _get_board()
+    for _ in range(n):
         board.move(Move(board, 3, 0, 2, 0))
-        board.move(Move(board, 3, 2, 2, 2))
+        board.move(Move(board, 5, 3, 5, 2))
         board.move(Move(board, 2, 0, 3, 0))
-        board.move(Move(board, 2, 2, 3, 2))
-    print(g.getGameEnded(board, 0), g.getGameEnded(board, 1))
+        board.move(Move(board, 5, 2, 5, 3))
+        print(board.num_repeats(PieceType.black), board.num_repeats(PieceType.white))
+    g._board = board
+    print(g.win_state())

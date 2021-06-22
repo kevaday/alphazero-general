@@ -2,8 +2,8 @@ import pyximport; pyximport.install()
 
 from alphazero.Coach import Coach, get_args
 from alphazero.NNetWrapper import NNetWrapper as nn
-from alphazero.gobang.GobangGame import GobangGame as Game
-from alphazero.gobang.GobangPlayers import GreedyGobangPlayer
+from alphazero.envs.gobang.GobangGame import GobangGame as Game
+from alphazero.envs.gobang.GobangPlayers import GreedyGobangPlayer
 
 
 args = get_args(
