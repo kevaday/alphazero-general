@@ -10,7 +10,7 @@ You may join the [Discord server](https://discord.gg/MVaHwGZpRC) if would like t
 
 ### Current differences from the above repos
 1. **Model Gating**: after each iteration, the model is compared to the previous iteration. The model that performs better continues forward based on an adjustable parameter.
-2. **Node-based MCTS**: this framework uses a better implementation of MCTS that uses nodes instead of dictionary lookups. This allows for a huge increase in performance and much less RAM usage than what the previous implementation used. The code for this was provided by bhandsconnect and it is much appreciated.
+2. **Node-based MCTS**: this framework uses a better implementation of MCTS that uses nodes instead of dictionary lookups. This allows for a huge increase in performance and much less RAM usage than what the previous implementation used, about 30-50% speed increase and 95% less RAM usage from experimental data. The code for this was provided by [bhandsconnect](https://github.com/bhansconnect) and it is much appreciated.
 3. **Batched MCTS**: bhandsconnect's repo already includes this for self play, but it has been expanded upon to be included in Arena for faster comparison of models.
 4. **Multiplayer Support**: Any number of players are supported! This allows for training on a greater variety of games such as many types of card games or something like Catan. (**NOTE:** This is still under development and is not currently functional.)
 5. **Warmup Iterations**: A few self play iterations in the beginning of training are performed using random policy and value to speed up initial generation of training data instead of using the model as it would be random anyways.
@@ -23,9 +23,6 @@ Make sure you have Python 3 installed. Then run:
 
 ### Try one of the existing examples
 1. Adjust the hyperparameters in one of the examples to your liking (path is ```alphazero/<game name>/train.py```). Take a look at Coach.py where the default arguments are stored to see the available choices you have. For example, edit ```alphazero/connect4/train.py```.
-
-**Note: not all example games have the `train.py` file or may not even be functional yet, I will add/fix them soon. For now, you can copy the train file from another game and change it accordingly such as from tafl or connect4.**
-
 2. After that, you can start training AlphaZero on your chosen game by running the following: ```python3 -m alphazero.<game name>.train```. Make sure that your working directory is the root of the repo.
 3. You can observe how training is progressing from the console output, or you can also run tensorboard for a visual representation. To start tensorboard, run ```tensorboard --logdir ./runs```, also from the project root. `runs` is the default directory for tensorboard data, but it can be changed in the hyperparameters `args`.
 4. Once you have trained a model and want to test it, either against itself or yourself, change ```alphazero/pit.py``` to your needs and run it with ```python3 -m alphazero.pit``` (once again, these things will be easier to do when I have the time to create proper documentation and make some tools more useable). You can also modify `roundrobin.py` to run a tournament with different iterations of models to rank them using a rating system.
@@ -74,3 +71,5 @@ In order to increase performance, you can save your game engine files which may 
 
 ## Results
 Results also coming soon! As seen in the root directory, I am currently training AlphaZero to play Viking Chess. I created the `boardgame` and `hnefatafl` modules to have a game engine for Viking Chess and to be able to visually play against the trained model when ready using PyQt5. Help yourself to the code to see how I did this so maybe you can do something similar. The `boardgame` module is a base for building a game engine for a boardgame, and as you will see, `hnefatafl` builds off of it.
+
+Recently, I was able to train AlphaZero to play Connect4 at superhuman levels, many people trying and failing to beat it. Results for this will also be shared soon.
