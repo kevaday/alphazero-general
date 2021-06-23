@@ -22,15 +22,15 @@ Make sure you have Python 3 installed. Then run:
 ```pip3 install -r requirements.txt```
 
 ### Try one of the existing examples
-1. Adjust the hyperparameters in one of the examples to your liking (path is ```alphazero/<game name>/train.py```). Take a look at Coach.py where the default arguments are stored to see the available choices you have. For example, edit ```alphazero/connect4/train.py```.
-2. After that, you can start training AlphaZero on your chosen game by running the following: ```python3 -m alphazero.<game name>.train```. Make sure that your working directory is the root of the repo.
+1. Adjust the hyperparameters in one of the examples to your liking (path is ```alphazero/envs/<env name>/train.py```). Take a look at Coach.py where the default arguments are stored to see the available choices you have. For example, edit ```alphazero/envs/connect4/train.py```.
+2. After that, you can start training AlphaZero on your chosen environment by running the following: ```python3 -m alphazero.envs.<env name>.train```. Make sure that your working directory is the root of the repo.
 3. You can observe how training is progressing from the console output, or you can also run tensorboard for a visual representation. To start tensorboard, run ```tensorboard --logdir ./runs```, also from the project root. `runs` is the default directory for tensorboard data, but it can be changed in the hyperparameters `args`.
-4. Once you have trained a model and want to test it, either against itself or yourself, change ```alphazero/pit.py``` to your needs and run it with ```python3 -m alphazero.pit``` (once again, these things will be easier to do when I have the time to create proper documentation and make some tools more useable). You can also modify `roundrobin.py` to run a tournament with different iterations of models to rank them using a rating system.
+4. Once you have trained a model and want to test it, either against itself or yourself, change ```alphazero/pit.py``` (or ```alphazero/envs/<env name>/pit.py```) to your needs and run it with ```python3 -m alphazero.pit``` (once again, these things will be easier to do when I have the time to create proper documentation and make some tools more usable). You can also modify `roundrobin.py` to run a tournament with different iterations of models to rank them using a rating system.
 
 ### Create your own game to train on
-Again, more detailed documentation is on the way, but in a nutshell, you must subclass `Game` from `alphazero/Game.py` and implement its abstract methods correctly. If this is done, just create a `train` file and choose hyperparameters accordingly and start training. You can also look at the original repos for more details on how it's done. Also, feel free to use and subclass the `boardgame` module I created to create a new game engine more easily as it implements some functions that may be useful to your case.
+Again, more detailed documentation is on the way, but in a nutshell, you must subclass `GameState` from `alphazero/Game.py` and implement its abstract methods correctly. If this is done, just create a `train` file and choose hyperparameters accordingly and start training. You can also look at the original repos for more details on how it's done. Also, feel free to use and subclass the `boardgame` module I created to create a new game engine more easily as it implements some functions that may be useful to your case.
 
-In order to increase performance, you can save your game engine files which may be a bottleneck with the extension `.pyx` to be compiled as C files using Cython.
+In order to increase performance, you can save your game engine files which may be a bottleneck to training with the extension `.pyx` to be compiled as C files using Cython.
 
 ### Description of some hyperparameters
 `workers`: Number of processes used for self play, Arena comparison, and training the model.
