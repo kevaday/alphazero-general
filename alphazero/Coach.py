@@ -57,6 +57,7 @@ DEFAULT_ARGS = dotdict({
     'model_gating': True,
     'max_gating_iters': 3,
     'min_next_model_winrate': 0.52,
+    'use_draws_for_winrate': False,
     'expertValueWeight': dotdict({
         'start': 0,
         'end': 0,
@@ -67,7 +68,19 @@ DEFAULT_ARGS = dotdict({
     'checkpoint': 'checkpoint',
     'data': 'data',
 
-    'lr': 0.005,
+    'scheduler_args': dotdict({
+        'min_lr': 1e-4,
+        'patience': 3,
+        'cooldown': 1,
+        'verbose': False
+    }),
+    'optimizer': torch.optim.SGD,
+    'optimizer_args': dotdict({
+        'lr': 1e-3,
+        'momentum': 0.9,
+        'weight_decay': 1e-4
+    }),
+
     'num_channels': 64,
     'depth': 8,
     'value_head_channels': 1,
@@ -144,7 +157,7 @@ class Coach:
 
                 if not self.args.skipSelfPlayIters or const_i > self.args.skipSelfPlayIters:
                     self.generateSelfPlayAgents()
-                    self.processSelfPlayBatches()
+                    self.processSelfPlayBatches(const_i)
                     self.saveIterationSamples(i)
                     self.processGameResults(const_i)
                     self.killSelfPlayAgents()
@@ -213,7 +226,7 @@ class Coach:
             self.agents[i].daemon = True
             self.agents[i].start()
 
-    def processSelfPlayBatches(self):
+    def processSelfPlayBatches(self, iteration):
         sample_time = AverageMeter()
         bar = Bar('Generating Samples', max=self.args.gamesPerIteration)
         end = time()
@@ -240,6 +253,7 @@ class Coach:
         self.stop_agents.set()
         bar.update()
         bar.finish()
+        self.writer.add_scalar('loss/sample_time', sample_time.avg, iteration)
         print()
 
     def saveIterationSamples(self, iteration):
@@ -268,11 +282,12 @@ class Coach:
 
     def processGameResults(self, iteration):
         num_games = self.result_queue.qsize()
-        wins, draws = get_game_results(self.result_queue, self.game_cls)
+        wins, draws, avg_game_length = get_game_results(self.result_queue, self.game_cls)
 
         for i in range(len(wins)):
             self.writer.add_scalar(f'win_rate/player{i}', (wins[i] + 0.5 * draws) / num_games, iteration)
         self.writer.add_scalar('win_rate/draws', draws / num_games, iteration)
+        self.writer.add_scalar('win_rate/avg_game_length', avg_game_length, iteration)
 
     def killSelfPlayAgents(self):
         for i in range(self.args.workers):
@@ -357,10 +372,10 @@ class Coach:
 
         ### Model gating ###
         if (
-                self.args.model_gating
-                and winrate < self.args.min_next_model_winrate
-                and self.args.max_gating_iters
-                and self.gating_counter < self.args.max_gating_iters
+            self.args.model_gating
+            and winrate < self.args.min_next_model_winrate
+            and self.args.max_gating_iters
+            and self.gating_counter < self.args.max_gating_iters
         ):
             print(f'Staying on model version {past}')
             self.nnet.load_checkpoint(folder=self.args.checkpoint + '/' + self.args.run_name,

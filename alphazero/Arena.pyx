@@ -105,9 +105,17 @@ class Arena:
         self.winrates = []
         [player.reset_wins() for player in self.players]
 
-    def __update_winrates(self, num_games):
-        [player.update_winrate(self.draws, num_games) for player in self.players]
-        self.winrates = [player.winrate for player in sorted(self.players, key=lambda p: p.index)]
+    def __update_winrates(self):
+        num_games = sum([player.wins for player in self.players]) + (
+            self.draws if self.args.use_draws_for_winrate else 0
+        )
+        [player.update_winrate(
+            self.draws if self.args.use_draws_for_winrate else 0, num_games
+        ) for player in self.players]
+        self.winrates = [player.winrate for player in self.__sorted_players()]
+
+    def __sorted_players(self):
+        return iter(sorted(self.players, key=lambda p: p.index))
 
     def play_game(self, verbose=False, _player_to_index: dict = None) -> Tuple[GameState, int]:
         """
@@ -243,7 +251,7 @@ class Arena:
                     n = size
                     end = time()
 
-                wins, draws = get_game_results(
+                wins, draws, _ = get_game_results(
                     result_queue,
                     self.game_cls,
                     _get_index=lambda p, i: agents[i].player_to_index[p]
@@ -251,7 +259,7 @@ class Arena:
                 for i, w in enumerate(wins):
                     self.players[i].wins += w
                 self.draws += draws
-                self.__update_winrates(sum([player.wins for player in self.players]) + self.draws)
+                self.__update_winrates()
 
                 bar.suffix = '({eps}/{maxeps}) Winrates: {wr} | Eps Time: {et:.3f}s | Total: {total:} | ETA: {eta:}' \
                     .format(
@@ -297,6 +305,6 @@ class Arena:
             bar.update()
             bar.finish()
 
-        wins = [player.wins for player in sorted(self.players, key=lambda p: p.index)]
+        wins = [player.wins for player in self.__sorted_players()]
 
         return wins, self.draws, self.winrates

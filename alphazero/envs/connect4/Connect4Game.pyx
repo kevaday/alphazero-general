@@ -64,8 +64,8 @@ class Connect4Game(GameState):
             player1 = np.where(pieces == self.get_players()[0], 1, 0)
             player2 = np.where(pieces == self.get_players()[1], 1, 0)
             colour = np.full_like(pieces, self.get_players().index(self.current_player()))
-            turn = np.full_like(pieces, self.turns / MAX_TURNS)
-            return np.array([player1, player2, colour, turn], dtype=np.intc)
+            turn = np.full_like(pieces, self.turns / MAX_TURNS, dtype=np.float32)
+            return np.array([player1, player2, colour, turn], dtype=np.float32)
 
         else:
             return np.expand_dims(np.asarray(self._board.pieces), axis=0)
@@ -76,13 +76,8 @@ class Connect4Game(GameState):
         return [(self.clone(), pi), (new_state, pi[::-1])]
 
 
-def display(board, player=None):
-    if player is not None:
-        b = board * [1, -1][player]
-    else:
-        b = board
-    
+def display(board):
     print(" -----------------------")
     #print(' '.join(map(str, range(len(board[0])))))
-    print(b)
+    print(board)
     print(" -----------------------")

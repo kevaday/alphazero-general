@@ -112,6 +112,7 @@ class SelfPlayAgent(mp.Process):
         if not self._is_warmup:
             self.batch_ready.wait()
             self.batch_ready.clear()
+
         for i in range(self.batch_size):
             index = self.batch_indices[i] if self._is_arena else i
             self.mcts[index].process_results(
@@ -132,7 +133,6 @@ class SelfPlayAgent(mp.Process):
 
             self.mcts[i].update_root(self.games[i], action)
             self.games[i].play_action(action)
-            self.games[i].turns += 1
             if self.args.mctsResetThreshold and self.games[i].turns >= self.next_reset[i]:
                 self.mcts[i] = MCTS(self.args.cpuct)
                 self.next_reset[i] = self.games[i].turns + self.args.mctsResetThreshold

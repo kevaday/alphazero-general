@@ -18,8 +18,8 @@ args = get_args(dotdict({
     # should preferably be a multiple of process_batch_size and workers
     'gamesPerIteration': 2048 * mp.cpu_count(),
     'symmetricSamples': True,
-    'numMCTSSims': 75,
-    'numFastSims': 10,
+    'numMCTSSims': 50,
+    'numFastSims': 5,
     'probFastSim': 0.75,
     'tempThreshold': 20,
     'temp': 1,

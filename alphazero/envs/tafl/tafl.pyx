@@ -127,6 +127,7 @@ class TaflGame(GameState):
         g = TaflGame()
         g._board = self._board.copy()
         g._player = self._player
+        g.turns = self.turns
         return g
 
     @staticmethod
@@ -157,13 +158,10 @@ class TaflGame(GameState):
             return True, 0
 
         winner = self._board.get_winner()
-        if not winner: return False, 0
+        if not winner:
+            return False, 0
 
-        winner = self._get_player_int(winner)
-        reward = int(winner == self.current_player())
-        reward -= int(winner == -1*self.current_player())
-
-        return True, reward
+        return True, self._get_player_int(winner)
 
     def observation(self):
         return _get_observation(

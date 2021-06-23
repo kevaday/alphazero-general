@@ -14,13 +14,12 @@ class NNetWrapper(NeuralNet):
     def __init__(self, game_cls, args):
         self.nnet = NNetArchitecture(game_cls, args)
         self.action_size = game_cls.action_size()
-        self.optimizer = optim.SGD(
-            self.nnet.parameters(), lr=args.lr, momentum=0.9, weight_decay=1e-3
-        )
+        self.optimizer = args.optimizer(self.nnet.parameters(), **args.optimizer_args)
 
         # self.scheduler = optim.lr_scheduler.MultiStepLR(
         # self.optimizer, milestones=[200,400], gamma=0.1)
-        self.scheduler = optim.lr_scheduler.ReduceLROnPlateau(self.optimizer, cooldown=10)
+        self.scheduler = optim.lr_scheduler.ReduceLROnPlateau(self.optimizer, **args.scheduler_args)
+        self.verbose = args.scheduler_args.get('verbose')
 
         if args.cuda:
             self.nnet.cuda()
@@ -35,7 +34,9 @@ class NNetWrapper(NeuralNet):
         pi_losses = AverageMeter()
         v_losses = AverageMeter()
 
-        #print(f'Current LR: {self.scheduler.get_lr()[0]}')
+        if self.verbose:
+            print(f'Current LR: {self.optimizer.param_groups[0]["lr"]}')
+
         bar = Bar(f'Training Net', max=train_steps)
         current_step = 0
         while current_step < train_steps:
@@ -49,8 +50,11 @@ class NNetWrapper(NeuralNet):
 
                 # predict
                 if self.args.cuda:
-                    boards, target_pis, target_vs = boards.contiguous().cuda(
-                    ), target_pis.contiguous().cuda(), target_vs.contiguous().cuda()
+                    boards, target_pis, target_vs = (
+                        boards.contiguous().cuda(),
+                        target_pis.contiguous().cuda(),
+                        target_vs.contiguous().cuda()
+                    )
 
                 # measure data loading time
                 data_time.update(time() - start)
@@ -84,7 +88,8 @@ class NNetWrapper(NeuralNet):
                     lv=v_losses.avg,
                 )
                 bar.next()
-        self.scheduler.step(pi_losses.avg+v_losses.avg)
+
+        self.scheduler.step(pi_losses.avg + v_losses.avg)
         bar.finish()
         print()
 
