@@ -292,7 +292,7 @@ class Arena:
                 else:
                     self.draws += 1
 
-                self.__update_winrates(eps)
+                self.__update_winrates()
                 eps_time.update(time() - end)
                 end = time()
                 bar.suffix = '({eps}/{maxeps}) Winrates: {wr} | Eps Time: {et:.3f}s | Total: {total:} | ETA: {eta:}' \
