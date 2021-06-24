@@ -385,6 +385,10 @@ class Coach:
             self.gating_counter += 1
         else:
             self.self_play_iter = model_iter
+            self.self_play_net.load_checkpoint(
+                folder=os.path.join(self.args.checkpoint, self.args.run_name),
+                filename=get_iter_file(self.self_play_iter)
+            )
             self.gating_counter = 0
 
         if self.args.model_gating:
