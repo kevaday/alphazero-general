@@ -29,13 +29,13 @@ DEFAULT_ARGS = dotdict({
     'autoTrainSteps': True,
     # should preferably be a multiple of process_batch_size and workers
     'gamesPerIteration': 64 * mp.cpu_count(),
-    'minTrainHistoryWindow': 2,
-    'maxTrainHistoryWindow': 8,
+    'minTrainHistoryWindow': 4,
+    'maxTrainHistoryWindow': 20,
     'trainHistoryIncrementIters': 2,
     'max_moves': 128,
     'num_stacked_observations': 8,
     'numWarmupIters': 2,  # Iterations where games are played randomly, 0 for none
-    'skipSelfPlayIters': 0,
+    'skipSelfPlayIters': None,
     'symmetricSamples': True,
     'numMCTSSims': 75,
     'numFastSims': 15,
@@ -55,7 +55,7 @@ DEFAULT_ARGS = dotdict({
     'compareWithPast': True,
     'pastCompareFreq': 1,
     'model_gating': True,
-    'max_gating_iters': 3,
+    'max_gating_iters': None,
     'min_next_model_winrate': 0.52,
     'use_draws_for_winrate': False,
     'expertValueWeight': dotdict({
@@ -68,15 +68,20 @@ DEFAULT_ARGS = dotdict({
     'checkpoint': 'checkpoint',
     'data': 'data',
 
+    'scheduler': torch.optim.lr_scheduler.MultiStepLR,
     'scheduler_args': dotdict({
-        'min_lr': 1e-4,
-        'patience': 3,
-        'cooldown': 1,
-        'verbose': False
+        'milestones': [100, 175],
+        'gamma': 0.1
+
+        # 'min_lr': 1e-4,
+        # 'patience': 3,
+        # 'cooldown': 1,
+        # 'verbose': False
     }),
+
+    'lr': 1e-3,
     'optimizer': torch.optim.SGD,
     'optimizer_args': dotdict({
-        'lr': 1e-3,
         'momentum': 0.9,
         'weight_decay': 1e-4
     }),
@@ -103,23 +108,24 @@ class Coach:
     def __init__(self, game_cls, nnet, args):
         np.random.seed()
         self.game_cls = game_cls
-        self.nnet = nnet
-        self.pnet = nnet.__class__(game_cls, args)
+        self.train_net = nnet
+        self.self_play_net = nnet.__class__(game_cls, args)
         self.args = args
 
         if self.args.load_model:
             networks = sorted(glob(self.args.checkpoint + '/' + self.args.run_name + '/*'))
             self.args.startIter = len(networks)
             if self.args.startIter == 0:
-                self.nnet.save_checkpoint(
+                self.train_net.save_checkpoint(
                     folder=self.args.checkpoint + '/' + self.args.run_name, filename=get_iter_file(0)
                 )
                 self.args.startIter = 1
 
-            self.nnet.load_checkpoint(
-                folder=self.args.checkpoint + '/' + self.args.run_name, filename=get_iter_file(self.args.startIter - 1))
+            self.train_net.load_checkpoint(
+                folder=self.args.checkpoint + '/' + self.args.run_name, filename=get_iter_file(self.args.startIter - 1)
+            )
 
-        self.current_iter = self.args.startIter
+        self.self_play_iter = self.args.startIter
         self.gating_counter = 0
         self.warmup = False
         self.agents = []
@@ -141,45 +147,42 @@ class Coach:
 
     def learn(self):
         print('Because of batching, it can take a long time before any games finish.')
-        const_i = self.current_iter
-        i = self.current_iter
+        model_iter = self.self_play_iter
 
         try:
 
-            while self.current_iter <= self.args.numIters:
-                i = self.current_iter
-                print(f'------ITER {i}------')
-                if const_i <= self.args.numWarmupIters:
+            while model_iter <= self.args.numIters:
+                print(f'------ITER {model_iter}------')
+                if model_iter <= self.args.numWarmupIters:
                     print('Warmup: random policy and value')
                     self.warmup = True
                 elif self.warmup:
                     self.warmup = False
 
-                if not self.args.skipSelfPlayIters or const_i > self.args.skipSelfPlayIters:
+                if not self.args.skipSelfPlayIters or model_iter > self.args.skipSelfPlayIters:
                     self.generateSelfPlayAgents()
-                    self.processSelfPlayBatches(const_i)
-                    self.saveIterationSamples(i)
-                    self.processGameResults(const_i)
+                    self.processSelfPlayBatches(model_iter)
+                    self.saveIterationSamples(model_iter)
+                    self.processGameResults(model_iter)
                     self.killSelfPlayAgents()
-                self.train(i)
+                self.train(model_iter)
 
-                if not self.warmup and self.args.compareWithBaseline and (const_i - 1) % self.args.baselineCompareFreq == 0:
-                    if const_i == 1:
+                if not self.warmup and self.args.compareWithBaseline and (model_iter - 1) % self.args.baselineCompareFreq == 0:
+                    if model_iter == 1:
                         print(
-                            'Note: Comparisons against the tester do not use monte carlo tree search.'
+                            'Note: Comparisons against the baseline do not use monte carlo tree search.'
                         )
-                    self.compareToBaseline(i)
+                    self.compareToBaseline(model_iter)
 
-                if not self.warmup and self.args.compareWithPast and (const_i - 1) % self.args.pastCompareFreq == 0:
-                    self.compareToPast(i)
+                if not self.warmup and self.args.compareWithPast and (model_iter - 1) % self.args.pastCompareFreq == 0:
+                    self.compareToPast(model_iter)
 
                 z = self.args.expertValueWeight
                 self.args.expertValueWeight.current = min(
-                    const_i, z.iterations) / z.iterations * (z.end - z.start) + z.start
+                    model_iter, z.iterations) / z.iterations * (z.end - z.start) + z.start
 
-                self.writer.add_scalar('win_rate/model_version', self.current_iter, const_i)
-                self.current_iter += 1
-                const_i += 1
+                self.writer.add_scalar('win_rate/self_play_model', self.self_play_iter, model_iter)
+                model_iter += 1
                 print()
 
         except KeyboardInterrupt:
@@ -187,8 +190,8 @@ class Coach:
             if self.completed.value != self.args.workers:
                 self.stop_agents.set()
                 if self.games_played.value > 0:
-                    self.saveIterationSamples(i)
-                    try: self.processGameResults(const_i)
+                    self.saveIterationSamples(self_play_iter)
+                    try: self.processGameResults(model_iter)
                     except ZeroDivisionError: pass
                 self.killSelfPlayAgents()
             """
@@ -235,7 +238,7 @@ class Coach:
         while self.completed.value != self.args.workers:
             try:
                 id = self.ready_queue.get(timeout=1)
-                policy, value = self.nnet.process(self.input_tensors[id])
+                policy, value = self.self_play_net.process(self.input_tensors[id])
                 self.policy_tensors[id].copy_(policy)
                 self.value_tensors[id].copy_(value)
                 self.batch_ready[id].set()
@@ -330,35 +333,37 @@ class Coach:
                                 
         train_steps = data_tensor.shape[0] // self.args.train_batch_size if self.args.autoTrainSteps else self.args.train_steps_per_iteration
 
-        l_pi, l_v = self.nnet.train(dataloader, train_steps)
+        l_pi, l_v = self.train_net.train(dataloader, train_steps)
         self.writer.add_scalar('loss/policy', l_pi, iteration)
         self.writer.add_scalar('loss/value', l_v, iteration)
         self.writer.add_scalar('loss/total', l_pi + l_v, iteration)
 
-        self.nnet.save_checkpoint(folder=self.args.checkpoint + '/' + self.args.run_name,
-                                  filename=get_iter_file(iteration))
+        self.train_net.save_checkpoint(folder=self.args.checkpoint + '/' + self.args.run_name,
+                                       filename=get_iter_file(iteration))
 
         del dataloader
         del dataset
         del datasets
 
-    def compareToPast(self, iteration):
-        past = max(0, iteration - self.args.pastCompareFreq)
-        self.pnet.load_checkpoint(folder=self.args.checkpoint + '/' + self.args.run_name, filename=get_iter_file(past))
+    def compareToPast(self, model_iter):
+        self.self_play_net.load_checkpoint(
+            folder=os.path.join(self.args.checkpoint, self.args.run_name),
+            filename=get_iter_file(self.self_play_iter)
+        )
 
-        print(f'PITTING AGAINST ITERATION {past}')
+        print(f'PITTING AGAINST ITERATION {self.self_play_iter}')
         if self.args.arenaBatched:
             if not self.args.arenaMCTS:
                 self.args.arenaMCTS = True
                 raise UserWarning('Batched arena comparison is enabled which uses MCTS, but arena MCTS is set to False.'
                                   ' Ignoring this, and continuing with batched MCTS in arena.')
 
-            nplayer = self.nnet.process
-            pplayer = self.pnet.process
+            nplayer = self.train_net.process
+            pplayer = self.self_play_net.process
         else:
             cls = MCTSPlayer if self.args.arenaMCTS else NNPlayer
-            nplayer = cls(self.nnet, args=self.args)
-            pplayer = cls(self.pnet, args=self.args)
+            nplayer = cls(self.train_net, args=self.args)
+            pplayer = cls(self.self_play_net, args=self.args)
 
         players = [nplayer]
         players.extend([pplayer] * (len(self.game_cls.get_players()) - 1))
@@ -368,29 +373,28 @@ class Coach:
         winrate = winrates[0]
 
         print(f'NEW/PAST WINS : {wins[0]} / {sum(wins[1:])} ; DRAWS : {draws}\n')
-        self.writer.add_scalar('win_rate/past', winrate, iteration)
+        self.writer.add_scalar('win_rate/past', winrate, model_iter)
 
         ### Model gating ###
         if (
             self.args.model_gating
             and winrate < self.args.min_next_model_winrate
-            and self.args.max_gating_iters
-            and self.gating_counter < self.args.max_gating_iters
+            and (self.args.max_gating_iters is None
+                 or self.gating_counter < self.args.max_gating_iters)
         ):
-            print(f'Staying on model version {past}')
-            self.nnet.load_checkpoint(folder=self.args.checkpoint + '/' + self.args.run_name,
-                                      filename=get_iter_file(past))
-            os.remove(os.path.join(self.args.checkpoint + '/' + self.args.run_name, get_iter_file(iteration)))
-            self.current_iter = past
             self.gating_counter += 1
         else:
+            self.self_play_iter = model_iter
             self.gating_counter = 0
+
+        if self.args.model_gating:
+            print(f'Using model version {self.self_play_iter} for self play.')
 
     def compareToBaseline(self, iteration):
         test_player = self.args.baselineTester()
 
         cls = MCTSPlayer if self.args.arenaMCTS else NNPlayer
-        nnplayer = cls(self.nnet, args=self.args)
+        nnplayer = cls(self.train_net, args=self.args)
 
         print('PITTING AGAINST BASELINE: ' + self.args.baselineTester.__name__)
 

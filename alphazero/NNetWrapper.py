@@ -14,11 +14,10 @@ class NNetWrapper(NeuralNet):
     def __init__(self, game_cls, args):
         self.nnet = NNetArchitecture(game_cls, args)
         self.action_size = game_cls.action_size()
-        self.optimizer = args.optimizer(self.nnet.parameters(), **args.optimizer_args)
+        self.optimizer = args.optimizer(self.nnet.parameters(), lr=args.lr, **args.optimizer_args)
 
-        # self.scheduler = optim.lr_scheduler.MultiStepLR(
-        # self.optimizer, milestones=[200,400], gamma=0.1)
-        self.scheduler = optim.lr_scheduler.ReduceLROnPlateau(self.optimizer, **args.scheduler_args)
+        self.scheduler = args.scheduler(self.optimizer, **args.scheduler_args)
+        # self.scheduler = optim.lr_scheduler.ReduceLROnPlateau(self.optimizer, **args.scheduler_args)
         self.verbose = args.scheduler_args.get('verbose')
 
         if args.cuda:

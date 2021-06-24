@@ -15,12 +15,11 @@ args = get_args(
     numFastSims=5,
     numWarmupSims=5,
     probFastSim=0.75,
-    # mctsResetThreshold=DRAW_MOVE_COUNT // 2,
     tempThreshold=int(DRAW_MOVE_COUNT*0.7),
     
     skipSelfPlayIters=None,
     model_gating=True,
-    max_gating_iters=3,
+    max_gating_iters=None,
     numWarmupIters=1,
     arenaCompareBaseline=8,
     baselineCompareFreq=3,
@@ -28,25 +27,15 @@ args = get_args(
     # baselineTester=GreedyTaflPlayer,
     min_next_model_winrate=0.52,
     use_draws_for_winrate=False,
-
-    minTrainHistoryWindow=1,
-    maxTrainHistoryWindow=2,
-    trainHistoryIncrementIters=10,
     
-    process_batch_size=32,
+    process_batch_size=50,
     train_batch_size=1024,
     arena_batch_size=32,
     arenaCompare=32*4,
-    gamesPerIteration=32*4,
-    
-    scheduler_args=dotdict({
-        'min_lr': 1e-4,
-        'patience': 2,
-        'cooldown': 1,
-        'verbose': True
-    }),
+    gamesPerIteration=50*4,
+
+    lr=1e-2,
     optimizer_args=dotdict({
-        'lr': 1e-2,
         'momentum': 0.9,
         'weight_decay': 1e-4
     }),
@@ -58,6 +47,7 @@ args = get_args(
     value_dense_layers=[2048, 1024],
     policy_dense_layers=[2048]
 )
+args.scheduler_args.milestones = [75, 150]
 
 
 if __name__ == "__main__":

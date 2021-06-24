@@ -21,7 +21,7 @@ args = get_args(dotdict({
     'numMCTSSims': 50,
     'numFastSims': 5,
     'probFastSim': 0.75,
-    'tempThreshold': 20,
+    'tempThreshold': 32,
     'temp': 1,
     'compareWithBaseline': True,
     'arenaCompareBaseline': 16,
@@ -33,8 +33,8 @@ args = get_args(dotdict({
     'compareWithPast': True,
     'pastCompareFreq': 1,
     'expertValueWeight': dotdict({
-        'start': 0.5,
-        'end': 0.5,
+        'start': 0,
+        'end': 0,
         'iterations': 35
     }),
     'cpuct': 4,
