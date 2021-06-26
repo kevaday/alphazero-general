@@ -109,7 +109,7 @@ class MCTSPlayer(BasePlayer):
         self.mcts.update_root(state, action)
 
     def reset(self):
-        self.mcts = MCTS(self.game_cls, self.cpuct)
+        self.mcts = MCTS(len(self.game_cls.get_players()), self.cpuct)
 
     def play(self, state) -> int:
         self.mcts.search(state, self.nn, self.num_sims)

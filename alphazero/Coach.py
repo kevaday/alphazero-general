@@ -66,6 +66,7 @@ DEFAULT_ARGS = dotdict({
     }),
     'load_model': True,
     'cpuct': 2,
+    'value_loss_weight': 1.5,
     'checkpoint': 'checkpoint',
     'data': 'data',
 

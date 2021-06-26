@@ -50,7 +50,7 @@ class SelfPlayAgent(mp.Process):
             self.mcts.append(self._get_mcts())
 
     def _get_mcts(self):
-        return MCTS(self.game_cls, self.args.cpuct)
+        return MCTS(len(self.game_cls.get_players()), self.args.cpuct)
 
     def run(self):
         try:
@@ -59,7 +59,7 @@ class SelfPlayAgent(mp.Process):
                 self.fast = np.random.random_sample() < self.args.probFastSim
                 sims = self.args.numFastSims if self.fast else self.args.numMCTSSims \
                     if not self._is_warmup else self.args.numWarmupSims
-                for i in range(sims):
+                for _ in range(sims):
                     self.generateBatch()
                     self.processBatch()
                 self.playMoves()

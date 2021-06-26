@@ -128,7 +128,7 @@ class NNetWrapper(NeuralNet):
         return -torch.sum(targets * outputs) / targets.size()[0]
 
     def loss_v(self, targets, outputs):
-        return torch.sum((targets - outputs) ** 2) / targets.size()[0]
+        return -self.args.value_loss_weight * torch.sum(targets * outputs) / targets.size()[0]
 
     def save_checkpoint(self, folder='checkpoint', filename='checkpoint.pth.tar'):
         filepath = os.path.join(folder, filename)

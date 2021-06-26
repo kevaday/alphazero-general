@@ -90,8 +90,8 @@ cdef class Node:
         return child
 
 
-def rebuild_mcts(cpuct, root, curnode, path):
-    mcts = MCTS()
+def rebuild_mcts(num_players, cpuct, root, curnode, path):
+    mcts = MCTS(num_players, cpuct)
     mcts.cpuct = cpuct
     mcts._root = root
     mcts._curnode = curnode
@@ -105,14 +105,14 @@ cdef class MCTS:
     cdef public Node _root
     cdef public Node _curnode
     cdef public list path
-    def __init__(self, game_cls, float cpuct=2.0):
+    def __init__(self, num_players, float cpuct=2.0):
         self.cpuct = cpuct
-        self._root = Node(-1, cpuct, len(game_cls.get_players()))
+        self._root = Node(-1, cpuct, num_players)
         self._curnode = self._root
         self.path = []
 
     def __reduce__(self):
-        return rebuild_mcts, (self.cpuct, self._root, self._curnode, self.path)
+        return rebuild_mcts, (self._root._players, self.cpuct, self._root, self._curnode, self.path)
 
     cpdef search(self, gs, nn, sims):
         cdef float[:] v
@@ -171,7 +171,7 @@ cdef class MCTS:
         cdef Node c
         for c in self._root._children:
             counts[c.a] = c.n
-        return counts
+        return np.asarray(counts)
 
     cpdef probs(self, gs, temp=1):
         counts = self.counts(gs)
