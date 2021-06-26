@@ -17,7 +17,7 @@ if __name__ == '__main__':
 
     import random
 
-    args.numMCTSSims = 2000
+    args.numMCTSSims = 50
     args.tempThreshold = 42
     args.temp = 1
     args.arena_batch_size = 64
@@ -25,30 +25,31 @@ if __name__ == '__main__':
     # all players
     # rp = RandomPlayer(g).play
     # gp = OneStepLookaheadConnect4Player(g).play
-    player1 = HumanConnect4Player()
+    #player1 = HumanConnect4Player()
 
     # nnet players
     nn1 = NNet(Game, args)
-    nn1.load_checkpoint('./checkpoint/connect4', 'iteration-0173.pkl')
-    # nn2 = NNet(g, args)
-    # nn2.load_checkpoint('./checkpoint/connect4', 'iteration-0080.pkl')
+    nn1.load_checkpoint('./checkpoint/connect4', 'iteration-0000.pkl')
+    nn2 = NNet(Game, args)
+    nn2.load_checkpoint('./checkpoint/connect4', 'iteration-0000.pkl')
     # player1 = nn1.process
     # player2 = nn2.process
 
     # player2 = NNPlayer(g, nn1, args=args, verbose=True).play
-    player2 = MCTSPlayer(Game, nn1, args=args, verbose=True)
-    # player2 = MCTSPlayer(g, nn2, reset_mcts=True, args=args).play
-    # player2 = RandomPlayer()
-    # player2 = GreedyTaflPlayer(g).play
+    player1 = MCTSPlayer(Game, nn1, args=args)
+    args2 = args.copy()
+    args2.numMCTSSims = 10
+    player2 = MCTSPlayer(Game, nn2, args=args)
+    #player2 = RandomPlayer()
 
     players = [player1, player2]
     random.shuffle(players)
     arena = Arena(players, Game, use_batched_mcts=False, args=args, display=display)
-    """
+
     wins, draws, winrates = arena.play_games(64)
     for i in range(len(wins)):
         print(f'player{i+1}:\n\twins: {wins[i]}\n\twin rate: {winrates[i]}')
     print('draws: ', draws)
-    """
-    _, result = arena.play_game(verbose=True)
-    print('Game result:', result)
+    
+    #_, result = arena.play_game(verbose=True)
+    #print('Game result:', result)

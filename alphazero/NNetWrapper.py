@@ -88,7 +88,10 @@ class NNetWrapper(NeuralNet):
                 )
                 bar.next()
 
-        self.scheduler.step(pi_losses.avg + v_losses.avg)
+        self.scheduler.step(
+            (pi_losses.avg + v_losses.avg) if isinstance(
+                self.scheduler, optim.lr_scheduler.ReduceLROnPlateau) else None
+        )
         bar.finish()
         print()
 
@@ -110,7 +113,7 @@ class NNetWrapper(NeuralNet):
             pi, v = self.nnet(board)
 
             # print('PREDICTION TIME TAKEN : {0:03f}'.format(time.time()-start))
-            return torch.exp(pi).data.cpu().numpy()[0], v.data.cpu().numpy()[0]
+            return torch.exp(pi).data.cpu().numpy()[0], torch.exp(v).data.cpu().numpy()[0]
 
     def process(self, batch: torch.Tensor):
         batch = batch.type(torch.FloatTensor)
@@ -119,7 +122,7 @@ class NNetWrapper(NeuralNet):
         self.nnet.eval()
         with torch.no_grad():
             pi, v = self.nnet(batch)
-            return torch.exp(pi), v
+            return torch.exp(pi), torch.exp(v)
 
     def loss_pi(self, targets, outputs):
         return -torch.sum(targets * outputs) / targets.size()[0]

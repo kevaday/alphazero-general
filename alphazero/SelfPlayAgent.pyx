@@ -47,7 +47,10 @@ class SelfPlayAgent(mp.Process):
             self.games.append(self.game_cls())
             self.histories.append([])
             self.next_reset.append(0)
-            self.mcts.append(MCTS(self.args.cpuct))
+            self.mcts.append(self._get_mcts())
+
+    def _get_mcts(self):
+        return MCTS(self.game_cls, self.args.cpuct)
 
     def run(self):
         try:
@@ -81,10 +84,10 @@ class SelfPlayAgent(mp.Process):
                 if np.sum(policy) > 0:
                     policy = policy / np.sum(policy)
                     self.policy_tensor[i] = torch.from_numpy(policy)
-                    self.value_tensor[i] = np.random.uniform(-1, 1)
+                    self.value_tensor[i] = torch.from_numpy(np.random.uniform(-1, 1, self.value_tensor[i].shape))
                 else:
                     self.policy_tensor[i] = torch.zeros(self.games[i].action_size())
-                    self.value_tensor[i] = 0.
+                    self.value_tensor[i] = torch.zeros_like(self.value_tensor[i])
                 continue
 
             data = torch.from_numpy(state.observation())
@@ -116,7 +119,7 @@ class SelfPlayAgent(mp.Process):
         for i in range(self.batch_size):
             index = self.batch_indices[i] if self._is_arena else i
             self.mcts[index].process_results(
-                self.games[i], self.value_tensor[i][0], self.policy_tensor[i].data.numpy()
+                self.games[i], self.value_tensor[i].data.numpy(), self.policy_tensor[i].data.numpy()
             )
 
     def playMoves(self):
@@ -127,19 +130,18 @@ class SelfPlayAgent(mp.Process):
             if not self.fast and not self._is_arena:
                 self.histories[i].append((
                     self.games[i].clone(),
-                    self.mcts[i].probs(self.games[i]),
-                    self.mcts[i].value()
+                    self.mcts[i].probs(self.games[i])
                 ))
 
             self.mcts[i].update_root(self.games[i], action)
             self.games[i].play_action(action)
             if self.args.mctsResetThreshold and self.games[i].turns >= self.next_reset[i]:
-                self.mcts[i] = MCTS(self.args.cpuct)
+                self.mcts[i] = self._get_mcts()
                 self.next_reset[i] = self.games[i].turns + self.args.mctsResetThreshold
 
-            game_over, value = self.games[i].win_state()
-            if game_over:
-                self.result_queue.put((self.games[i].clone(), value, self.id))
+            winstate = self.games[i].win_state()
+            if any(winstate):
+                self.result_queue.put((self.games[i].clone(), winstate, self.id))
                 lock = self.games_played.get_lock()
                 lock.acquire()
                 if self.games_played.value < self.args.gamesPerIteration:
@@ -154,12 +156,10 @@ class SelfPlayAgent(mp.Process):
 
                             for state, pi in data:
                                 self.output_queue.put((
-                                    state.observation(), pi,
-                                    value * (1 - self.args.expertValueWeight.current)
-                                    + self.args.expertValueWeight.current * hist[2]
+                                    state.observation(), pi, np.array(winstate, dtype=np.float32)
                                 ))
                     self.games[i] = self.game_cls()
                     self.histories[i] = []
-                    self.mcts[i] = MCTS(self.args.cpuct)
+                    self.mcts[i] = self._get_mcts()
                 else:
                     lock.release()

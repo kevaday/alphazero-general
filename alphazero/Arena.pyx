@@ -117,7 +117,7 @@ class Arena:
     def __sorted_players(self):
         return iter(sorted(self.players, key=lambda p: p.index))
 
-    def play_game(self, verbose=False, _player_to_index: dict = None) -> Tuple[GameState, int]:
+    def play_game(self, verbose=False, _player_to_index: list = None) -> Tuple[GameState, Tuple[bool, ...]]:
         """
         Executes one episode of a game.
 
@@ -129,30 +129,30 @@ class Arena:
 
         # Reset the state of the players if needed
         [p.reset() for p in self.players]
-
         state = self.game_cls()
+        player_to_index = _player_to_index or state.get_players().copy()
 
         while True:
-            index = state.current_player() if not _player_to_index else _player_to_index[state.current_player()]
-            action = self.players[index](state, state.turns)
-
-            if verbose:
-                print('Turn ', str(state.turns), 'Player ', str(state.current_player()), 'Action ', action)
-                self.display(state)
+            action = self.players[player_to_index[state.current_player()]](state)
 
             # valids = state.valid_moves()
             # assert valids[action] > 0, ' '.join(map(str, [action, index, state.current_player(), turns, valids]))
 
             [p.update(state, action) for p in self.players]
             state.play_action(action)
-            game_over, value = state.win_state()
+            
+            if verbose:
+                print('Turn ', str(state.turns), 'Player ', str(state.current_player()), 'Action ', action)
+                self.display(state)
+            
+            winstate = state.win_state()
 
-            if game_over:
+            if any(winstate):
                 if verbose:
-                    print("Game over: Turn ", str(state.turns), "Result ", str(value))
+                    print("Game over: Turn ", str(state.turns), "Result ", str(winstate))
                     self.display(state)
 
-                return state, value
+                return state, winstate
 
     def play_games(self, num, verbose=False) -> Tuple[List[int], int, List[int]]:
         """
@@ -172,12 +172,11 @@ class Arena:
 
         players = self.game_cls.get_players().copy()
 
-        def get_player_order() -> dict:
+        def get_player_order():
             if len(players) == 2:
                 players.reverse()
             else:
                 random.shuffle(players)
-            return {p: i for i, p in enumerate(players)}
 
         if self.use_batched_mcts:
             self.args.gamesPerIteration = num
@@ -197,8 +196,8 @@ class Arena:
             #    self.args.workers = mp.cpu_count() - 1
 
             for i in range(self.args.workers):
-                player_to_index = get_player_order()
-                input_tensors = [[] for _ in player_to_index]
+                get_player_order()
+                input_tensors = [[] for _ in players]
                 batch_queues.append(mp.Queue())
 
                 policy_tensors.append(torch.zeros(
@@ -207,7 +206,7 @@ class Arena:
                 policy_tensors[i].pin_memory()
                 policy_tensors[i].share_memory_()
 
-                value_tensors.append(torch.zeros([self.args.arena_batch_size, 1]))
+                value_tensors.append(torch.zeros([self.args.arena_batch_size, len(self.game_cls.get_players()) + 1]))
                 value_tensors[i].pin_memory()
                 value_tensors[i].share_memory_()
 
@@ -217,7 +216,7 @@ class Arena:
                     SelfPlayAgent(i, self.game_cls, ready_queue, batch_ready[i],
                                   input_tensors, policy_tensors[i], value_tensors[i], batch_queues[i],
                                   result_queue, completed, games_played, stop_agents, self.args,
-                                  _is_arena=True, _player_order=player_to_index.copy()))
+                                  _is_arena=True, _player_order=players.copy()))
                 agents[i].daemon = True
                 agents[i].start()
 
@@ -281,16 +280,18 @@ class Arena:
         else:
             for eps in range(1, num + 1):
                 # Get a new lookup for self.players, randomized or reversed from original
-                player_to_index = get_player_order()
+                get_player_order()
 
                 # Play a single game with the current player order
-                _, value = self.play_game(verbose, player_to_index)
+                _, winstate = self.play_game(verbose, players)
 
                 # Bookkeeping + plot progress
-                if value != 0:
-                    self.players[player_to_index[value]].add_win()
-                else:
-                    self.draws += 1
+                for player, is_win in enumerate(winstate):
+                    if is_win:
+                        if player == len(winstate) - 1:
+                            self.draws += 1
+                        else:
+                            self.players[players[player]].add_win()
 
                 self.__update_winrates()
                 eps_time.update(time() - end)

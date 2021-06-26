@@ -23,13 +23,17 @@ def get_game_results(result_queue, game_cls, _get_index=None):
     wins = [0] * len(game_cls.get_players())
     draws = 0
     game_len_sum = 0
+
     for _ in range(num_games):
-        state, value, agent_id = result_queue.get()
+        state, winstate, agent_id = result_queue.get()
         game_len_sum += state.turns
-        if value != 0:
-            index = _get_index(value, agent_id) if _get_index else player_to_index[value]
-            wins[index] += 1
-        else:
-            draws += 1
+
+        for player, is_win in enumerate(winstate):
+            if is_win:
+                if player == len(wins):
+                    draws += 1
+                else:
+                    index = _get_index(player, agent_id) if _get_index else player_to_index[player]
+                    wins[index] += 1
 
     return wins, draws, game_len_sum / num_games if num_games else 0

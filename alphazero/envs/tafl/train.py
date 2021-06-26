@@ -17,6 +17,7 @@ args = get_args(
     probFastSim=0.75,
     tempThreshold=int(DRAW_MOVE_COUNT*0.7),
     
+    selfPlayModelIter=103,
     skipSelfPlayIters=None,
     model_gating=True,
     max_gating_iters=None,
@@ -28,11 +29,11 @@ args = get_args(
     min_next_model_winrate=0.52,
     use_draws_for_winrate=False,
     
-    process_batch_size=50,
+    process_batch_size=32,
     train_batch_size=1024,
     arena_batch_size=32,
     arenaCompare=32*4,
-    gamesPerIteration=50*4,
+    gamesPerIteration=32*4,
 
     lr=1e-2,
     optimizer_args=dotdict({

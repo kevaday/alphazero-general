@@ -1,8 +1,6 @@
 from abc import ABC, abstractmethod
 from typing import List, Tuple, Any
 
-PLAYERS = [1, -1]
-
 
 class GameState(ABC):
     def __init__(self, board):
@@ -43,6 +41,7 @@ class GameState(ABC):
         pass
 
     @staticmethod
+    @abstractmethod
     def get_players() -> List[int]:
         """
         Returns:
@@ -50,14 +49,17 @@ class GameState(ABC):
                      Should be list(range(N)) where N is the
                      constant number of players in the game.
         """
-        return PLAYERS
+        pass
 
     def current_player(self) -> int:
         return self._player
 
+    def _next_player(self, player, turns=1):
+        return (player + turns) % len(self.get_players())
+
     def _update_turn(self):
         """Should be called at the end of play_action"""
-        self._player *= -1
+        self._player = self._next_player(self._player)
         self.turns += 1
 
     @abstractmethod
@@ -66,8 +68,12 @@ class GameState(ABC):
         pass
 
     @abstractmethod
-    def win_state(self) -> Tuple[bool, int]:
-        """Get the win state of the game, a tuple of a boolean representing if the game is over, and a value integer."""
+    def win_state(self) -> Tuple[bool, ...]:
+        """
+        Get the win state of the game, a tuple of boolean values
+        for each player indicating if they have won, plus one more
+        boolean at the end to indicate a draw.
+        """
         pass
 
     @abstractmethod

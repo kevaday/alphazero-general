@@ -36,10 +36,11 @@ DEFAULT_ARGS = dotdict({
     'num_stacked_observations': 8,
     'numWarmupIters': 2,  # Iterations where games are played randomly, 0 for none
     'skipSelfPlayIters': None,
+    'selfPlayModelIter': None,
     'symmetricSamples': True,
     'numMCTSSims': 75,
     'numFastSims': 15,
-    'numWarmupSims': 50,
+    'numWarmupSims': 10,
     'probFastSim': 0.75,
     'mctsResetThreshold': None,
     'tempThreshold': 32,
@@ -125,7 +126,7 @@ class Coach:
                 folder=self.args.checkpoint + '/' + self.args.run_name, filename=get_iter_file(self.args.startIter - 1)
             )
 
-        self.self_play_iter = self.args.startIter
+        self.self_play_iter = self.args.selfPlayModelIter or self.args.startIter
         self.gating_counter = 0
         self.warmup = False
         self.agents = []
@@ -147,7 +148,7 @@ class Coach:
 
     def learn(self):
         print('Because of batching, it can take a long time before any games finish.')
-        model_iter = self.self_play_iter
+        model_iter = self.args.startIter
 
         try:
 
@@ -215,7 +216,9 @@ class Coach:
             self.policy_tensors[i].pin_memory()
             self.policy_tensors[i].share_memory_()
 
-            self.value_tensors.append(torch.zeros([self.args.process_batch_size, 1]))
+            self.value_tensors.append(torch.zeros(
+                [self.args.process_batch_size, len(self.game_cls.get_players()) + 1]
+            ))
             self.value_tensors[i].pin_memory()
             self.value_tensors[i].share_memory_()
             self.batch_ready.append(mp.Event())
@@ -265,12 +268,12 @@ class Coach:
 
         data_tensor = torch.zeros([num_samples, *self.game_cls.observation_size()])
         policy_tensor = torch.zeros([num_samples, self.game_cls.action_size()])
-        value_tensor = torch.zeros([num_samples, 1])
+        value_tensor = torch.zeros([num_samples, len(self.game_cls.get_players()) + 1])
         for i in range(num_samples):
             data, policy, value = self.file_queue.get()
             data_tensor[i] = torch.from_numpy(data)
-            policy_tensor[i] = torch.tensor(policy)
-            value_tensor[i, 0] = value
+            policy_tensor[i] = torch.from_numpy(policy)
+            value_tensor[i] = torch.from_numpy(value)
 
         folder = self.args.data + '/' + self.args.run_name
         filename = folder + '/' + get_iter_file(iteration).replace('.pkl', '')
@@ -288,7 +291,9 @@ class Coach:
         wins, draws, avg_game_length = get_game_results(self.result_queue, self.game_cls)
 
         for i in range(len(wins)):
-            self.writer.add_scalar(f'win_rate/player{i}', (wins[i] + 0.5 * draws) / num_games, iteration)
+            self.writer.add_scalar(f'win_rate/player{i}', (
+                    wins[i] + (0.5 * draws if self.args.use_draws_for_winrate else 0)
+            ) / num_games, iteration)
         self.writer.add_scalar('win_rate/draws', draws / num_games, iteration)
         self.writer.add_scalar('win_rate/avg_game_length', avg_game_length, iteration)
 
@@ -362,8 +367,8 @@ class Coach:
             pplayer = self.self_play_net.process
         else:
             cls = MCTSPlayer if self.args.arenaMCTS else NNPlayer
-            nplayer = cls(self.train_net, args=self.args)
-            pplayer = cls(self.self_play_net, args=self.args)
+            nplayer = cls(self.game_cls, self.train_net, args=self.args)
+            pplayer = cls(self.game_cls, self.self_play_net, args=self.args)
 
         players = [nplayer]
         players.extend([pplayer] * (len(self.game_cls.get_players()) - 1))
@@ -398,7 +403,7 @@ class Coach:
         test_player = self.args.baselineTester()
 
         cls = MCTSPlayer if self.args.arenaMCTS else NNPlayer
-        nnplayer = cls(self.train_net, args=self.args)
+        nnplayer = cls(self.game_cls, self.train_net, args=self.args)
 
         print('PITTING AGAINST BASELINE: ' + self.args.baselineTester.__name__)
 

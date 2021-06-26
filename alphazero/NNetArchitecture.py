@@ -83,7 +83,7 @@ class NNetArchitecture(nn.Module):
         self.v_fc = mlp(
             self.board_x*self.board_y*args.value_head_channels,
             args.value_dense_layers,
-            1,
+            len(game_cls.get_players()) + 1,  # 1 for draw
             activation=nn.Identity
         )
 
@@ -112,4 +112,4 @@ class NNetArchitecture(nn.Module):
         pi = torch.flatten(pi, 1)
         pi = self.pi_fc(pi)
 
-        return F.log_softmax(pi, dim=1), torch.tanh(v)
+        return F.log_softmax(pi, dim=1), F.log_softmax(v, dim=1)

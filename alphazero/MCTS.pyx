@@ -15,14 +15,14 @@ import cython
 np.seterr(all='raise')
 
 
-def rebuild_node(children, a, cpuct, e, q, n, p, player):
+def rebuild_node(children, a, cpuct, num_players, e, q, n, p, player):
     childs = []
     for child_state in children:
         rebuild, args = child_state[0], child_state[1:]
         child = rebuild(*args)
         childs.append(child)
 
-    node = Node(a, cpuct)
+    node = Node(a, cpuct, num_players)
     node._children = childs
     node.a = a
     node.cpuct = cpuct
@@ -40,30 +40,32 @@ cdef class Node:
     cdef public list _children
     cdef public int a
     cdef public float cpuct
-    cdef public (bint, int) e
+    cdef public int _players
+    cdef public tuple e
     cdef public float q
     cdef public int n
     cdef public float p
     cdef public int player
 
-    def __init__(self, int action, float cpuct):
+    def __init__(self, int action, float cpuct, int num_players):
         self._children = []
         self.a = action
         self.cpuct = cpuct
-        self.e = (False, 0)
+        self._players = num_players
+        self.e = tuple([False]*(num_players + 1))
         self.q = 0
         self.n = 0
         self.p = 0
         self.player = 0
 
     def __reduce__(self):
-        return rebuild_node, ([n.__reduce__() for n in self._children], self.a, self.cpuct, self.e, self.q, self.n, self.p, self.player)
+        return rebuild_node, ([n.__reduce__() for n in self._children], self.a, self.cpuct, self._players, self.e, self.q, self.n, self.p, self.player)
 
     cdef add_children(self, int[:] v):
         cdef Py_ssize_t a
         for a in range(len(v)):
             if v[a] == 1:
-                self._children.append(Node(a, self.cpuct))
+                self._children.append(Node(a, self.cpuct, self._players))
         # shuffle children
         np.random.shuffle(self._children)
 
@@ -73,8 +75,7 @@ cdef class Node:
             c.p = pi[c.a]
 
     cdef uct(self, float sqrtParentN):
-        uct = self.q + self.cpuct * self.p * sqrtParentN/(1+self.n)
-        return uct
+        return self.q + self.cpuct * self.p * sqrtParentN/(1+self.n)
 
     cdef best_child(self):
         child = None
@@ -104,9 +105,9 @@ cdef class MCTS:
     cdef public Node _root
     cdef public Node _curnode
     cdef public list path
-    def __init__(self, float cpuct=2.0):
+    def __init__(self, game_cls, float cpuct=2.0):
         self.cpuct = cpuct
-        self._root = Node(-1, cpuct)
+        self._root = Node(-1, cpuct, len(game_cls.get_players()))
         self._curnode = self._root
         self.path = []
 
@@ -114,7 +115,7 @@ cdef class MCTS:
         return rebuild_mcts, (self.cpuct, self._root, self._curnode, self.path)
 
     cpdef search(self, gs, nn, sims):
-        cdef float v
+        cdef float[:] v
         cdef float[:] p
         for _ in range(sims):
             leaf = self.find_leaf(gs)
@@ -122,7 +123,7 @@ cdef class MCTS:
             self.process_results(leaf, v, p)
 
     cpdef update_root(self, gs, int a):
-        if self._root._children == []:
+        if not self._root._children:
             self._root.add_children(gs.valid_moves())
         cdef Node c
         for c in self._root._children:
@@ -135,29 +136,30 @@ cdef class MCTS:
     cpdef find_leaf(self, gs):
         self._curnode = self._root
         gs = gs.clone()
-        while self._curnode.n > 0 and not self._curnode.e[0]:
+        while self._curnode.n > 0 and not any(self._curnode.e):
             self.path.append(self._curnode)
             self._curnode = self._curnode.best_child()
             gs.play_action(self._curnode.a)
 
         if self._curnode.n == 0:
-            ws = gs.win_state()
             self._curnode.player = gs.current_player()
-            self._curnode.e = (ws[0], ws[1]*self._curnode.player)
+            self._curnode.e = gs.win_state()
             self._curnode.add_children(gs.valid_moves())
 
         return gs
 
-    cpdef process_results(self, gs, float value, float[:] pi):
-        if self._curnode.e[0]:
-            value = self._curnode.e[1]
+    cpdef process_results(self, gs, float[:] value, float[:] pi):
+        if any(self._curnode.e):
+            value = np.array(self._curnode.e, dtype=np.float32)
         else:
             self._curnode.update_policy(pi)
 
-        player = gs.current_player()
+        cdef int num_players = len(gs.get_players())
+        cdef int player
         while self.path:
             parent = self.path.pop()
-            v = value if parent.player == player else -value
+            player = parent.player
+            v = value[player] + value[num_players] / num_players
             self._curnode.q = (self._curnode.q * self._curnode.n + v) / (self._curnode.n + 1)
             self._curnode.n += 1
             self._curnode = parent

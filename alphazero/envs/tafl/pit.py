@@ -14,16 +14,16 @@ if __name__ == '__main__':
     from alphazero.envs.tafl.tafl import TaflGame as Game
     from alphazero.envs.tafl.train import args
 
-    args.numMCTSSims = 50
+    args.numMCTSSims = 2000
     args.tempThreshold = 100
     args.temp = 1
     args.arena_batch_size = 64
 
     # nnet players
     nn1 = NNet(Game, args)
-    nn1.load_checkpoint('./checkpoint/hnefatafl', 'iteration-0010.pkl')
+    nn1.load_checkpoint('./checkpoint/hnefatafl', 'iteration-0058.pkl')
     nn2 = NNet(Game, args)
-    nn2.load_checkpoint('./checkpoint/hnefatafl', 'iteration-0010.pkl')
+    nn2.load_checkpoint('./checkpoint/hnefatafl', 'iteration-0058.pkl')
     #player1 = nn1.process
     #player2 = nn2.process
 
