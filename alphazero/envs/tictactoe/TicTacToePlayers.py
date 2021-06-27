@@ -3,7 +3,7 @@ from alphazero.Game import GameState
 
 
 class HumanTicTacToePlayer(BasePlayer):
-    def play(self, state: GameState, turn: int) -> int:
+    def play(self, state: GameState) -> int:
         valid = state.valid_moves()
         """
         for i in range(len(valid)):

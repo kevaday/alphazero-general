@@ -16,6 +16,17 @@ def get_iter_file(iteration: int):
     return f'iteration-{iteration:04d}.pkl'
 
 
+def scale_temp(scale_factor: float, min_temp: float, cur_temp: float, turns: int, const_max_turns: int) -> float:
+    if (turns + 1) % int(scale_factor * const_max_turns) == 0:
+        return max(min_temp, cur_temp / 2)
+    else:
+        return cur_temp
+
+
+def default_temp_scaling(*args, **kwargs) -> float:
+    return scale_temp(0.15, 0.2, *args, **kwargs)
+
+
 def get_game_results(result_queue, game_cls, _get_index=None):
     player_to_index = {p: i for i, p in enumerate(game_cls.get_players())}
 

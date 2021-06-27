@@ -29,6 +29,7 @@ class SelfPlayAgent(mp.Process):
         self.result_queue = result_queue
         self.games = []
         self.histories = []
+        self.temps = []
         self.next_reset = []
         self.mcts = []
         self.games_played = games_played
@@ -46,11 +47,17 @@ class SelfPlayAgent(mp.Process):
         for _ in range(self.batch_size):
             self.games.append(self.game_cls())
             self.histories.append([])
+            self.temps.append(self.args.startTemp)
             self.next_reset.append(0)
             self.mcts.append(self._get_mcts())
 
     def _get_mcts(self):
-        return MCTS(len(self.game_cls.get_players()), self.args.cpuct)
+        return MCTS(
+            len(self.game_cls.get_players()),
+            self.args.cpuct,
+            self.args.root_noise_frac,
+            self.args.root_policy_temp
+        )
 
     def run(self):
         try:
@@ -119,13 +126,16 @@ class SelfPlayAgent(mp.Process):
         for i in range(self.batch_size):
             index = self.batch_indices[i] if self._is_arena else i
             self.mcts[index].process_results(
-                self.games[i], self.value_tensor[i].data.numpy(), self.policy_tensor[i].data.numpy()
+                self.games[i],
+                self.value_tensor[i].data.numpy(),
+                self.policy_tensor[i].data.numpy(),
+                self.args.add_root_noise
             )
 
     def playMoves(self):
         for i in range(self.batch_size):
-            temp = int(self.games[i].turns < self.args.tempThreshold)
-            policy = self.mcts[i].probs(self.games[i], temp)
+            self.temps[i] = self.args.temp_scaling_fn(self.temps[i], self.games[i].turns, self.args.max_moves)
+            policy = self.mcts[i].probs(self.games[i], self.temps[i])
             action = np.random.choice(self.games[i].action_size(), p=policy)
             if not self.fast and not self._is_arena:
                 self.histories[i].append((
@@ -160,6 +170,7 @@ class SelfPlayAgent(mp.Process):
                                 ))
                     self.games[i] = self.game_cls()
                     self.histories[i] = []
+                    self.temps[i] = self.args.startTemp
                     self.mcts[i] = self._get_mcts()
                 else:
                     lock.release()

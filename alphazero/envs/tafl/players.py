@@ -5,7 +5,7 @@ from alphazero.Game import GameState
 
 
 class HumanTaflPlayer(BasePlayer):
-    def play(self, state: GameState, turn: int):
+    def play(self, state: GameState):
         valid_moves = state.valid_moves()
 
         def string_to_action(player_inp: str) -> int:
@@ -25,7 +25,7 @@ class HumanTaflPlayer(BasePlayer):
 
 
 class GreedyTaflPlayer(BasePlayer):
-    def play(self, state: GameState, turn: int):
+    def play(self, state: GameState):
         valids = state.valid_moves()
         candidates = []
 

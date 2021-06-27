@@ -3,7 +3,7 @@ from alphazero.Game import GameState
 
 
 class HumanOthelloPlayer(BasePlayer):
-    def play(self, state: GameState, turn: int) -> int:
+    def play(self, state: GameState) -> int:
         valid = state.valid_moves()
         """
         for i in range(len(valid)):
@@ -25,7 +25,7 @@ class HumanOthelloPlayer(BasePlayer):
 
 
 class GreedyOthelloPlayer(BasePlayer):
-    def play(self, state: GameState, turn: int) -> int:
+    def play(self, state: GameState) -> int:
         valids = state.valid_moves()
         candidates = []
 

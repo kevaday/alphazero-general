@@ -1,7 +1,9 @@
+from typing import Callable
+
 from alphazero.MCTS import MCTS
 from alphazero.Game import GameState
 from alphazero.NNetWrapper import NNetWrapper
-from alphazero.utils import dotdict
+from alphazero.utils import dotdict, default_temp_scaling
 
 from abc import ABC, abstractmethod
 
@@ -35,28 +37,23 @@ class RandomPlayer(BasePlayer):
 
 
 class NNPlayer(BasePlayer):
-    def __init__(self, game_cls: GameState, nn, temp=0, temp_threshold=10, args: dotdict = None):
+    def __init__(self, game_cls: GameState, nn: NNetWrapper, args: dotdict):
         super().__init__(game_cls)
         self.nn = nn
-        self.temp = temp
-        self.temp_threshold = temp_threshold
-        if args: self.update_args(args)
-
-    def update_args(self, args: dotdict):
-        self.temp = args.arenaTemp
-        self.temp_threshold = args.tempThreshold
+        self.args = args
+        self.temp = args.startTemp
 
     def play(self, state) -> int:
-        policy, _ = self.nn.predict(state)
+        policy, _ = self.nn.predict(state.observation())
         valids = state.valid_moves()
         options = policy * valids
-        temp = 1 if state.turns <= self.temp_threshold else self.temp
-        if temp == 0:
+        self.temp = self.args.temp_scaling_fn(self.temp, state.turns, self.args.max_moves)
+        if self.temp == 0:
             bestA = np.argmax(options)
             probs = [0] * len(options)
             probs[bestA] = 1
         else:
-            probs = [x ** (1. / temp) for x in options]
+            probs = [x ** (1. / self.temp) for x in options]
             probs /= np.sum(probs)
 
         choice = np.random.choice(
@@ -65,7 +62,7 @@ class NNPlayer(BasePlayer):
 
         if valids[choice] == 0:
             print()
-            print(temp)
+            print(self.temp)
             print(valids)
             print(policy)
             print(probs)
@@ -75,49 +72,34 @@ class NNPlayer(BasePlayer):
 
 
 class MCTSPlayer(BasePlayer):
-    def __init__(self, game_cls: GameState, nn: NNetWrapper, temp=0, temp_threshold=10, num_sims=50, cpuct=2,
-                 verbose=False, args: dotdict = None):
+    def __init__(self, game_cls: GameState, nn: NNetWrapper, args: dotdict, verbose=False):
         super().__init__(game_cls)
         self.nn = nn
-        self.temp = temp
-        self.temp_threshold = temp_threshold
-        self.num_sims = num_sims
-        self.cpuct = cpuct
-        self.verbose = verbose
         self.args = args
-        self.mcts = None
-        self.update_args(args)
-
-    def update_args(self, args: dotdict = None):
-        if args:
-            self.args = args
-            self.temp = args.temp
-            self.temp_threshold = args.tempThreshold
-            self.num_sims = args.numMCTSSims
-            self.cpuct = args.cpuct
-        else:
-            self.args = dotdict({
-                'temp': self.temp,
-                'tempThreshold': self.temp_threshold,
-                'numMCTSSims': self.num_sims,
-                'cpuct': self.cpuct
-            })
-
+        self.temp = args.startTemp
+        self.verbose = verbose
         self.reset()
 
     def update(self, state: GameState, action: int) -> None:
         self.mcts.update_root(state, action)
 
     def reset(self):
-        self.mcts = MCTS(len(self.game_cls.get_players()), self.cpuct)
+        self.mcts = MCTS(
+            len(self.game_cls.get_players()),
+            self.args.cpuct,
+            self.args.root_noise_frac,
+            self.args.root_policy_temp
+        )
 
     def play(self, state) -> int:
-        self.mcts.search(state, self.nn, self.num_sims)
-        temp = 1 if state.turns <= self.temp_threshold else self.temp
-        policy = self.mcts.probs(state, temp)
+        self.mcts.search(state, self.nn, self.args.numMCTSSims, False)
+        self.temp = self.args.temp_scaling_fn(self.temp, state.turns, self.args.max_moves)
+        policy = self.mcts.probs(state, self.temp)
         
         if self.verbose:
             # print('max tree depth:', len(self.mcts.path))
-            print(f'value for player {state.current_player()}: {self.mcts.value()}')
+            _, value = self.nn.predict(state.observation())
+            print(f'value for player {state.current_player()}: {value}')
+            print(f'policy: {policy}')
 
         return np.random.choice(len(policy), p=policy)

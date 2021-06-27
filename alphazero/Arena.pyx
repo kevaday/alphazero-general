@@ -233,7 +233,7 @@ class Arena:
                     data = batch_queues[id].get()
                     for player in range(len(self.players)):
                         batch = data[player]
-                        if isinstance(batch, torch.Tensor):
+                        if not isinstance(batch, list):
                             p, v = self.players[player](batch)
                             policy.append(p)
                             value.append(v)

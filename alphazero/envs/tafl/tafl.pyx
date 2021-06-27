@@ -21,6 +21,7 @@ def _get_board():
 GAME_VARIANT = variants.hnefatafl
 MAX_REPEATS = 3  # N-fold repetition loss
 NUM_PLAYERS = 2
+PLAYERS = list(range(NUM_PLAYERS))
 NUM_STACKED_OBSERVATIONS = 1
 NUM_BASE_CHANNELS = 5
 NUM_CHANNELS = NUM_BASE_CHANNELS * NUM_STACKED_OBSERVATIONS
@@ -131,6 +132,10 @@ class TaflGame(GameState):
         return g
 
     @staticmethod
+    def get_players() -> List[int]:
+        return PLAYERS
+
+    @staticmethod
     def action_size() -> int:
         return ACTION_SIZE
 
@@ -152,16 +157,18 @@ class TaflGame(GameState):
         self._board.move(move, _check_game_end=False, _check_valid=False)
         self._update_turn()
 
-    def win_state(self) -> Tuple[bool, int]:
+    def win_state(self) -> Tuple[bool, ...]:
+        result = [False] * (NUM_PLAYERS + 1)
+
         # Check if maximum moves have been exceeded
         if self.turns >= DRAW_MOVE_COUNT:
-            return True, 0
+            result[-1] = True
+        else:
+            winner: PieceType = self._board.get_winner()
+            if winner:
+                result[2 - winner.value] = True
 
-        winner = self._board.get_winner()
-        if not winner:
-            return False, 0
-
-        return True, self._get_player_int(winner)
+        return tuple(result)
 
     def observation(self):
         return _get_observation(

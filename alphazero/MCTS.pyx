@@ -12,6 +12,8 @@ from libc.math cimport sqrt
 import numpy as np
 import cython
 
+NOISE_ALPHA_RATIO = 10.83
+
 np.seterr(all='raise')
 
 
@@ -58,8 +60,8 @@ cdef class Node:
         self.p = 0
         self.player = 0
 
-    def __reduce__(self):
-        return rebuild_node, ([n.__reduce__() for n in self._children], self.a, self.cpuct, self._players, self.e, self.q, self.n, self.p, self.player)
+    # def __reduce__(self):
+    #    return rebuild_node, ([n.__reduce__() for n in self._children], self.a, self.cpuct, self._players, self.e, self.q, self.n, self.p, self.player)
 
     cdef add_children(self, int[:] v):
         cdef Py_ssize_t a
@@ -102,25 +104,29 @@ def rebuild_mcts(num_players, cpuct, root, curnode, path):
 @cython.auto_pickle(True)
 cdef class MCTS:
     cdef public float cpuct
+    cdef public float frac
+    cdef public float root_temp
     cdef public Node _root
     cdef public Node _curnode
     cdef public list path
-    def __init__(self, num_players, float cpuct=2.0):
+    def __init__(self, int num_players, float cpuct=2.0, float root_noise_frac=0.25, float root_policy_temp=1.25):
         self.cpuct = cpuct
+        self.frac = root_noise_frac
+        self.root_temp = root_policy_temp
         self._root = Node(-1, cpuct, num_players)
         self._curnode = self._root
         self.path = []
 
-    def __reduce__(self):
-        return rebuild_mcts, (self._root._players, self.cpuct, self._root, self._curnode, self.path)
+    # def __reduce__(self):
+    #   return rebuild_mcts, (self._root._players, self.cpuct, self._root, self._curnode, self.path)
 
-    cpdef search(self, gs, nn, sims):
+    cpdef search(self, gs, nn, int sims, bint add_root_noise):
         cdef float[:] v
         cdef float[:] p
         for _ in range(sims):
             leaf = self.find_leaf(gs)
             p, v = nn(leaf.observation())
-            self.process_results(leaf, v, p)
+            self.process_results(leaf, v, p, add_root_noise)
 
     cpdef update_root(self, gs, int a):
         if not self._root._children:
@@ -131,7 +137,17 @@ cdef class MCTS:
                 self._root = c
                 return
 
-        raise ValueError(f'Invalid action while updating root: {c.a}')
+        raise ValueError(f'Invalid action encountered while updating root: {c.a}')
+
+    cpdef add_root_noise(self, gs):
+        cdef float[:] noise = np.array(np.random.dirichlet([NOISE_ALPHA_RATIO / len(self._root._children)] * gs.action_size()), dtype=np.float32)
+        cdef float[:] valids = np.array(gs.valid_moves(), dtype=np.float32)
+        noise = np.asarray(noise) * np.asarray(valids)
+        noise /= np.sum(noise)
+        cdef Node c
+
+        for c in self._root._children:
+            c.p = c.p * (1 - self.frac) + self.frac * noise[c.a]
 
     cpdef find_leaf(self, gs):
         self._curnode = self._root
@@ -148,11 +164,22 @@ cdef class MCTS:
 
         return gs
 
-    cpdef process_results(self, gs, float[:] value, float[:] pi):
+    cpdef process_results(self, gs, float[:] value, float[:] pi, bint add_root_noise):
+        cdef float[:] valids
+        
         if any(self._curnode.e):
             value = np.array(self._curnode.e, dtype=np.float32)
         else:
+            valids = np.array(gs.valid_moves(), dtype=np.float32)
+            # mask invalid moves
+            pi = np.asarray(pi) * np.asarray(valids)
+            # normalize pi and add temperature
+            pi = (pi / np.sum(pi)) ** (1.0 / self.root_temp)
+            # renormalize
+            pi /= np.sum(pi)
             self._curnode.update_policy(pi)
+            if add_root_noise:
+                self.add_root_noise(gs)
 
         cdef int num_players = len(gs.get_players())
         cdef int player

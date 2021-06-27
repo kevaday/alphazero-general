@@ -3,7 +3,7 @@ from alphazero.Game import GameState
 
 
 class HumanGobangPlayer(BasePlayer):
-    def play(self, state: GameState, turn: int) -> int:
+    def play(self, state: GameState) -> int:
         valid = state.valid_moves()
         """
         for i in range(len(valid)):
@@ -25,7 +25,7 @@ class HumanGobangPlayer(BasePlayer):
 
 
 class GreedyGobangPlayer(BasePlayer):
-    def play(self, state: GameState, turn: int) -> int:
+    def play(self, state: GameState) -> int:
         valids = state.valid_moves()
         candidates = []
 
@@ -34,7 +34,7 @@ class GreedyGobangPlayer(BasePlayer):
 
             next_state = state.clone()
             next_state.play_action(a)
-            candidates += [(-next_state.win_state()[1], a)]
+            candidates += [(int(next_state.win_state()[next_state.current_player()]), a)]
 
         candidates.sort()
         return candidates[0][1]

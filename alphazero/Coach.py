@@ -1,5 +1,5 @@
 from alphazero.SelfPlayAgent import SelfPlayAgent
-from alphazero.utils import get_iter_file, dotdict, get_game_results
+from alphazero.utils import get_iter_file, dotdict, get_game_results, default_temp_scaling
 from alphazero.Arena import Arena
 from alphazero.GenericPlayers import RandomPlayer, NNPlayer, MCTSPlayer
 from alphazero.pytorch_classification.utils import Bar, AverageMeter
@@ -26,6 +26,7 @@ DEFAULT_ARGS = dotdict({
     'train_batch_size': 512,
     'arena_batch_size': 32,
     'train_steps_per_iteration': 256,
+    'train_sample_ratio': 2,
     'autoTrainSteps': True,
     # should preferably be a multiple of process_batch_size and workers
     'gamesPerIteration': 64 * mp.cpu_count(),
@@ -43,8 +44,11 @@ DEFAULT_ARGS = dotdict({
     'numWarmupSims': 10,
     'probFastSim': 0.75,
     'mctsResetThreshold': None,
-    'tempThreshold': 32,
-    'temp': 1,
+    'startTemp': 1,
+    'temp_scaling_fn': default_temp_scaling,
+    'root_policy_temp': 1.25,
+    'root_noise_frac': 0.25,
+    'add_root_noise': True,
     'compareWithBaseline': True,
     'baselineTester': RandomPlayer,
     'arenaCompareBaseline': 16,
@@ -118,16 +122,15 @@ class Coach:
             networks = sorted(glob(self.args.checkpoint + '/' + self.args.run_name + '/*'))
             self.args.startIter = len(networks)
             if self.args.startIter == 0:
-                self.train_net.save_checkpoint(
-                    folder=self.args.checkpoint + '/' + self.args.run_name, filename=get_iter_file(0)
-                )
+                self._save_model(self.train_net, 0)
                 self.args.startIter = 1
 
-            self.train_net.load_checkpoint(
-                folder=self.args.checkpoint + '/' + self.args.run_name, filename=get_iter_file(self.args.startIter - 1)
-            )
+            self._load_model(self.train_net, self.args.startIter - 1)
+            self.self_play_iter = self.args.selfPlayModelIter or (self.args.startIter - 1)
+        else:
+            self.self_play_iter = self.args.selfPlayModelIter or self.args.startIter
 
-        self.self_play_iter = self.args.selfPlayModelIter or self.args.startIter
+        self._load_model(self.self_play_net, self.self_play_iter)
         self.gating_counter = 0
         self.warmup = False
         self.agents = []
@@ -146,6 +149,18 @@ class Coach:
         else:
             self.writer = SummaryWriter()
         self.args.expertValueWeight.current = self.args.expertValueWeight.start
+    
+    def _load_model(self, model, iteration):
+        model.load_checkpoint(
+            folder=os.path.join(self.args.checkpoint, self.args.run_name),
+            filename=get_iter_file(iteration)
+        )
+    
+    def _save_model(self, model, iteration):
+        model.save_checkpoint(
+            folder=os.path.join(self.args.checkpoint, self.args.run_name),
+            filename=get_iter_file(iteration)
+        )
 
     def learn(self):
         print('Because of batching, it can take a long time before any games finish.')
@@ -276,8 +291,8 @@ class Coach:
             policy_tensor[i] = torch.from_numpy(policy)
             value_tensor[i] = torch.from_numpy(value)
 
-        folder = self.args.data + '/' + self.args.run_name
-        filename = folder + '/' + get_iter_file(iteration).replace('.pkl', '')
+        folder = os.path.join(self.args.data, self.args.run_name)
+        filename = os.path.join(folder, get_iter_file(iteration).replace('.pkl', ''))
         if not os.path.exists(folder): os.makedirs(folder)
 
         torch.save(data_tensor, filename + '-data.pkl', pickle_protocol=pickle.HIGHEST_PROTOCOL)
@@ -337,31 +352,28 @@ class Coach:
         dataloader = DataLoader(dataset, batch_size=self.args.train_batch_size, shuffle=True,
                                 num_workers=self.args.workers, pin_memory=True)
                                 
-        train_steps = data_tensor.shape[0] // self.args.train_batch_size if self.args.autoTrainSteps else self.args.train_steps_per_iteration
+        train_steps = (data_tensor.shape[0] * self.args.train_sample_ratio) // self.args.train_batch_size \
+            if self.args.autoTrainSteps else self.args.train_steps_per_iteration
 
         l_pi, l_v = self.train_net.train(dataloader, train_steps)
         self.writer.add_scalar('loss/policy', l_pi, iteration)
         self.writer.add_scalar('loss/value', l_v, iteration)
         self.writer.add_scalar('loss/total', l_pi + l_v, iteration)
 
-        self.train_net.save_checkpoint(folder=self.args.checkpoint + '/' + self.args.run_name,
-                                       filename=get_iter_file(iteration))
+        self._save_model(self.train_net, iteration)
 
         del dataloader
         del dataset
         del datasets
 
     def compareToPast(self, model_iter):
-        self.self_play_net.load_checkpoint(
-            folder=os.path.join(self.args.checkpoint, self.args.run_name),
-            filename=get_iter_file(self.self_play_iter)
-        )
+        self._load_model(self.self_play_net, self.self_play_iter)
 
         print(f'PITTING AGAINST ITERATION {self.self_play_iter}')
         if self.args.arenaBatched:
             if not self.args.arenaMCTS:
                 self.args.arenaMCTS = True
-                raise UserWarning('Batched arena comparison is enabled which uses MCTS, but arena MCTS is set to False.'
+                print('WARNING: Batched arena comparison is enabled which uses MCTS, but arena MCTS is set to False.'
                                   ' Ignoring this, and continuing with batched MCTS in arena.')
 
             nplayer = self.train_net.process
@@ -391,10 +403,7 @@ class Coach:
             self.gating_counter += 1
         else:
             self.self_play_iter = model_iter
-            self.self_play_net.load_checkpoint(
-                folder=os.path.join(self.args.checkpoint, self.args.run_name),
-                filename=get_iter_file(self.self_play_iter)
-            )
+            self._load_model(self.self_play_net, self.self_play_iter)
             self.gating_counter = 0
 
         if self.args.model_gating:
