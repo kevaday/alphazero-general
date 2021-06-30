@@ -118,7 +118,7 @@ class TaflGame(GameState):
 
     @staticmethod
     def _get_piece_type(player: int) -> PieceType:
-        return PieceType.black if player == 1 else PieceType.white
+        return PieceType(2 - player)
 
     @staticmethod
     def _get_player_int(player: PieceType) -> int:
