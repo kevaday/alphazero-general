@@ -14,7 +14,6 @@ You may join the [Discord server](https://discord.gg/MVaHwGZpRC) if would like t
 3. **Batched MCTS**: bhandsconnect's repo already includes this for self play, but it has been expanded upon to be included in Arena for faster comparison of models.
 4. **Multiplayer Support**: Any number of players are supported! This allows for training on a greater variety of games such as many types of card games or something like Catan.
 5. **Warmup Iterations**: A few self play iterations in the beginning of training are performed using random policy and value to speed up initial generation of training data instead of using the model as it would be random anyways.
-6. Generally cleaner, more functional and universal code so far.
 
 ## Getting Started
 ### Install required packages
