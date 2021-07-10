@@ -6,6 +6,7 @@
 # cython: initializedcheck=False
 # cython: cdivision=True
 # cython: auto_pickle=True
+# cython: profile=True
 
 import numpy as np
 

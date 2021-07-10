@@ -1,7 +1,8 @@
 # cython: language_level=3
+# cython: profile=True
 
 from boardgame.errors import InvalidMoveError
-from typing import Set, List, Callable, Union, Tuple, Optional
+from typing import Set, List, Callable, Union, Tuple, Optional, Iterator
 from abc import ABC, abstractmethod
 
 import uuid
@@ -74,8 +75,33 @@ class BasePiece(object):
         self.__id = piece_id
         self.__white = is_white
 
-    def __repr__(self) -> str:
+    def __eq__(self, other: 'BasePiece') -> bool:
+        return (
+            other is not None
+            and self.type == other.type
+            and self.x == other.x
+            and self.y == other.y
+            and self.__id == other.__dict__['_BasePiece__id']
+            and self.__white == other.__dict__['_BasePiece__white']
+        )
+
+    def __hash__(self):
+        return (self.type.value + 1) * (self.x + 1) * (self.y + 1) * (self.__id + 1)
+
+    def __str__(self) -> str:
         return str(self.type.value)
+
+    def __repr__(self) -> str:
+        return f'<{self.__class__.__name__}>{self.__dict__}'
+
+    def __copy__(self) -> 'BasePiece':
+        cls = self.__class__
+        result = cls.__new__(cls)
+        result.__dict__.update(self.__dict__)
+        return result
+
+    def copy(self) -> 'BasePiece':
+        return self.__copy__()
 
     @property
     def id(self) -> int:
@@ -113,10 +139,28 @@ class BaseTile(object):
         return int(self.to_string(add_values=False))
 
     def __eq__(self, other):
-        return other is not None and self.__dict__ == other.__dict__
+        return (
+            other is not None
+            and self.type == other.type
+            and self.x == other.x
+            and self.y == other.y
+            and self.piece == other.piece
+        )
 
     def __hash__(self):
-        return hash(f'{self.type.value} {self.x} {self.y} {repr(self.piece)}')
+        hash_int = (self.type.value + 1) * (self.x + 1) * (self.y + 1) * (hash(self.piece) if self.piece else 0)
+        return hash_int
+
+    def __copy__(self) -> 'BaseTile':
+        cls = self.__class__
+        result = cls.__new__(cls)
+        new_dict = self.__dict__.copy()
+        new_dict['piece'] = self.piece.copy() if self.piece else None
+        result.__dict__.update(new_dict)
+        return result
+
+    def copy(self) -> 'BaseTile':
+        return self.__copy__()
 
     def to_string(self, add_values=True, piece_priority=True):
         string = self.type.value
@@ -136,7 +180,8 @@ class BaseTile(object):
 
 class BaseBoard(ABC):
     def __init__(self, board: Union['BaseBoard', str, list] = None, load_file: str = None, save_file: str = None,
-                 max_repeats: int = None, store_initial_state=False, custom=False, _store_past_states=True, _max_past_states: int = None):
+                 max_repeats: int = None, store_initial_state=False, custom=False,
+                 _store_past_states=True, _max_past_states: int = None):
         self.__kwargs = locals()
         del self.__kwargs['self']
         self.save_file = save_file
@@ -144,15 +189,17 @@ class BaseBoard(ABC):
         self.pieces = []
         self.killed_pieces = []
         self.max_repeats = max_repeats
+        self.__store_initial_state = store_initial_state and _store_past_states
         self._store_past_states = _store_past_states
+        self._max_past_states = _max_past_states
 
         if isinstance(board, list):
             self._board = board
             self.height = len(board)
             self.width = len(board[0])
         else:
-            self.width = self.height = None
-            self._board = None
+            self.width = self.height = self._board = None
+
         if board and not self._board:
             if isinstance(board, BaseBoard):
                 board = board.to_string()
@@ -160,16 +207,11 @@ class BaseBoard(ABC):
         elif isinstance(board, str):
             self.load_file(load_file)
 
-        if _store_past_states:
-            self._past_states = []
-            self._max_past_states = _max_past_states
-            if _max_past_states:
-                self._turn_count = 0
-            if store_initial_state: self._update_state(move=None)
-        else:
+        self._past_states = []
+        if _max_past_states is not None:
             self._turn_count = 0
-            self.__last_move = {}
-            self.__repeats = {}
+        if self.store_initial_state:
+            self._update_state(move=None)
 
     @abstractmethod
     def load(self, data: str) -> List[str]:
@@ -194,8 +236,13 @@ class BaseBoard(ABC):
         return '\n'.join(
             [(' ' if add_spaces else '').join(
                 [tile.to_string(add_values, piece_priority=piece_priority) for tile in row]
-            ) for row in self]
+            ) for row in self._board]
         )
+
+    def iter_tiles(self) -> Iterator[BaseTile]:
+        for row in self._board:
+            for tile in row:
+                yield tile
 
     def __len__(self):
         return len(self._board)
@@ -203,17 +250,14 @@ class BaseBoard(ABC):
     def __getitem__(self, key):
         return self._board[key]
 
-    def __setitem__(self, key, value):
-        self._board[key] = value
-
-    def __delitem__(self, key):
-        del self._board[key]
-
     def __iter__(self):
         return iter(self._board)
 
     def __contains__(self, item):
-        return item in self._board
+        for row in self:
+            if item in row:
+                return True
+        return False
 
     def __repr__(self):
         return self.__str__()
@@ -230,7 +274,15 @@ class BaseBoard(ABC):
             and self.height == other.height
             and self.num_turns == other.num_turns
             and self.get_winner() == other.get_winner()
-            and [tile == other_tile for row, other_row in zip(self, other) for tile, other_tile in zip(row, other_row)]
+            and all([tile == other_tile for row, other_row in zip(self, other)
+                     for tile, other_tile in zip(row, other_row)])
+        )
+
+    def __hash__(self):
+        winner = self.get_winner()
+        return hash(
+            self.to_string() + str(self.num_turns) + str(winner.value if winner else -1)
+            + str(self.max_repeats) + str(self._max_past_states) + str(int(self._store_past_states))
         )
 
     def __copy__(
@@ -242,18 +294,33 @@ class BaseBoard(ABC):
     ):
         store = self._store_past_states and store_past_states
         kwargs = self.__kwargs.copy()
-        kwargs['board'] = self.to_string() if not state else state.copy() if _copy_state else state
+
+        if not state:
+            state = [[tile.copy() for tile in row] for row in self]
+        elif _copy_state and not isinstance(state, str):
+            state = [[tile.copy() for tile in row] for row in state]
+
+        kwargs['board'] = state
         kwargs['_store_past_states'] = store
         new_board = self.__class__(**kwargs)
+        new_board.pieces = [tile.piece for tile in new_board.iter_tiles() if tile.piece]
+        new_board.killed_pieces = [p.copy() for p in self.killed_pieces]
 
         if store:
             new_board._past_states = past_states or [
                 (state[0], state[1].copy(new_board) if state[1] else None) for state in self._past_states
             ]
-            if self._max_past_states: new_board._turn_count = self._turn_count
+        elif self._store_past_states:
+            new_board._past_states = [
+                state[1].copy(new_board) for state in self._past_states
+            ]
         else:
-            new_board._turn_count = len(self._past_states) \
-                if self._store_past_states and not self._max_past_states else self._turn_count
+            new_board._past_states = [
+                state.copy(new_board) for state in self._past_states
+            ]
+
+        if self._max_past_states is not None:
+            new_board._turn_count = self._turn_count
 
         return new_board
 
@@ -261,23 +328,24 @@ class BaseBoard(ABC):
         return self.__copy__(*args, **kwargs)
 
     @property
+    def store_initial_state(self):
+        return self.__store_initial_state
+
+    @property
     def num_turns(self):
-        return len(self._past_states) if self._store_past_states and not self._max_past_states else self._turn_count
+        return self._turn_count if self._max_past_states is not None else len(self._past_states)
 
-    def _repeats_from(self, start_index: int = 0, piece_type=None, stop_at_max=False) -> int:
-        if self._store_past_states:
-            count = 0
-            last_move = self.get_past_move(start_index)
-            for i in range(start_index + _TWO_MOVES_BACK, self.num_turns, _TWO_MOVES_BACK):
-                move = self.get_past_move(i)
-                if move != last_move:
-                    break
-                count += 1
-                if stop_at_max and self.max_repeats and count >= self.max_repeats: break
+    def _repeats_from(self, start_index: int = 0, stop_at_max=False) -> int:
+        count = 0
+        last_move = self.get_past_move(start_index)
+        for i in range(start_index + _TWO_MOVES_BACK, self.num_turns, _TWO_MOVES_BACK):
+            move = self.get_past_move(i)
+            if move != last_move:
+                break
+            count += 1
+            if stop_at_max and self.max_repeats and count >= self.max_repeats: break
 
-            return count
-
-        return max(self.__repeats[piece_type].values()) if self.__repeats.get(piece_type) else 0
+        return count
 
     @staticmethod
     def get_piece(tile_or_piece):
@@ -289,10 +357,12 @@ class BaseBoard(ABC):
     def get_tile(self, piece):
         if piece: return self[piece.y][piece.x]
 
-    def undo(self) -> bool:
-        if not self._store_past_states or not len(self._past_states): return False
+    def undo(self):
+        if not self._store_past_states:
+            raise NotImplementedError(
+                'Cannot undo the last state because past states are not stored in this instance of BaseBoard.'
+            )
         self.__init__(self._past_states.pop(0)[0])
-        return True
 
     def in_bounds(self, x, y):
         """
@@ -302,6 +372,11 @@ class BaseBoard(ABC):
         :return: :type bool: True if in bounds, False if not
         """
         return self.width - 1 >= x >= 0 and self.height - 1 >= y >= 0
+
+    @abstractmethod
+    def to_play(self):
+        """Get the player who's turn it is based on the board state as a PieceType. Assumes turns are done legally."""
+        pass
 
     @abstractmethod
     def valid_moves(self, tile_or_piece: Union[BaseTile, BasePiece]) -> Set['Move']:
@@ -376,6 +451,11 @@ class BaseBoard(ABC):
         """
         pass
 
+    def random_move(self):
+        """Play a random move on the board."""
+        import random
+        self.move(random.choice(list(self.all_valid_moves(self.to_play()))))
+
     @abstractmethod
     def get_team_colour(self, piece_type):
         """Given piece_type, should always return the same constant piece type for the team that piece_type is on."""
@@ -391,58 +471,35 @@ class BaseBoard(ABC):
         """Returns the player indicated by a piece type that has won the game. None if there is no winner yet."""
         pass
 
-    def _repeat_exceeded(self, piece_type=None):
-        """To be called after a move is done to check if a player has exceed their maximum allowed repeats."""
-        return self.max_repeats and self._repeats_from(piece_type=piece_type, stop_at_max=True) >= self.max_repeats
+    def _repeat_exceeded(self):
+        """To be called after a move is done to check if the current player has exceeded their maximum allowed repeats."""
+        return self.max_repeats and self._repeats_from(stop_at_max=True) >= self.max_repeats
 
     def _update_state(self, move: 'Move'):
-        if self._store_past_states:
-            self._past_states.insert(0, (self.copy(store_past_states=False), move))
-            if self._max_past_states:
-                self._past_states = self._past_states[:self._max_past_states]
-                self._turn_count += 1
-        else:
+        if self._max_past_states == 0:
             self._turn_count += 1
-            if not self.max_repeats: return
+            return
 
-            piece_type = self.get_team_colour(move.get_piece().type)
-            remove_repeat = False
-            if self.__last_move.get(piece_type):
-                self.__last_move[piece_type].insert(0, move)
-                while len(self.__last_move[piece_type]) > 3:
-                    del self.__last_move[piece_type][-1]
-                    remove_repeat = True
-            else:
-                self.__last_move[piece_type] = [move]
-                return
-            
-            repeat = int(
-                len(self.__last_move[piece_type]) > 2
-                and move == self.__last_move[piece_type][-1]
-            )
-            if self.__repeats.get(piece_type):
-                if self.__repeats[piece_type].get(move):
-                    if repeat:
-                        self.__repeats[piece_type][move] += repeat
-                    else:
-                        if remove_repeat:
-                            del self.__repeats[piece_type][move]
-                        else:
-                            self.__repeats[piece_type][move] = repeat
-
-                else: self.__repeats[piece_type].update({move: repeat})
-            else: self.__repeats[piece_type] = {move: repeat}
+        self._past_states.insert(0, (self.copy(store_past_states=False), move) if self._store_past_states else move)
+        if self._max_past_states is not None:
+            self._past_states = self._past_states[:self._max_past_states]
+            self._turn_count += 1
 
     def get_past_move(self, index) -> Optional['Move']:
         """Get the a past move that occurred on the board from the given index. Only works if past states are stored."""
-        if not self._store_past_states or index >= len(self._past_states): return
-        return self._past_states[index][1]
+        return self._past_states[index][1] if self._store_past_states else self._past_states[index]
 
     def get_last_move(self) -> Optional['Move']:
         return self.get_past_move(0)
 
     def reset(self):
-        self.__init__(**self.__kwargs)
+        if self.store_initial_state and self._max_past_states is not None:
+            kwargs = self.__kwargs.copy()
+            kwargs['board'] = self._past_states[-1][0]
+        else:
+            kwargs = self.__kwargs
+
+        self.__init__(**kwargs)
 
 
 class Move(object):
@@ -476,6 +533,8 @@ class Move(object):
         if self.tile is None or self.new_tile is None:
             print('empty move, args: ', args)
 
+        self.__piece = self.tile.piece or self.new_tile.piece
+
     def __repr__(self):
         return f'({self.tile.x},{self.tile.y})->({self.new_tile.x},{self.new_tile.y})'
 
@@ -486,7 +545,7 @@ class Move(object):
         return other is not None and self.tile == other.tile and self.new_tile == other.new_tile
 
     def __hash__(self):
-        return hash(f'{hash(self.tile)} {hash(self.new_tile)}')
+        return hash(self.tile) + hash(self.new_tile)
 
     def __reversed__(self):
         move = self.copy()
@@ -504,10 +563,10 @@ class Move(object):
                 tile_or_piece = self.board[args[1]][args[0]]
 
         return tile_or_piece
-    
+
+    @property
     def get_piece(self):
-        if self.tile.piece: return self.tile.piece
-        if self.new_tile.piece: return self.new_tile.piece
+        return self.__piece
 
     def copy(self, new_board: BaseBoard = None):
         new_board = new_board or self.board
@@ -584,19 +643,19 @@ class BaseGame(object):
     def _check_moves(self, piece_type):
         return len(self.board.all_valid_moves(piece_type)) == 0
 
-    def move(self, *args) -> None:
+    def move(self, move: Move, *args, **kwargs) -> None:
         """Method for handling turns for moving on the board."""
         pass
 
     def undo(self):
-        if self.board.undo():
-            self._update_turn()
-            if self.game_over:
-                self.game_over = False
-                if self.white.won:
-                    self.white.won = False
-                elif self.black.won:
-                    self.black.won = False
+        self.board.undo()
+        self._update_turn()
+        if self.game_over:
+            self.game_over = False
+            if self.white.won:
+                self.white.won = False
+            elif self.black.won:
+                self.black.won = False
 
     def reset(self):
         self.black.reset()

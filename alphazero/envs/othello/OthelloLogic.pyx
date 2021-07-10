@@ -5,7 +5,7 @@
 # cython: overflowcheck=False
 # cython: initializedcheck=False
 # cython: cdivision=True
-'''
+"""
 Author: Eric P. Nichols
 Date: Feb 8, 2008.
 Board class.
@@ -16,7 +16,7 @@ Board data:
      at the opposite end of the board in row 8.
 Squares are stored and manipulated as (x,y) tuples.
 x is the column, y is the row.
-'''
+"""
 
 cimport cython
 import numpy as np
@@ -24,24 +24,26 @@ import numpy as np
 # list of all 8 directions on the board, as (x,y) offsets
 cdef list __directions = [(1,1),(1,0),(1,-1),(0,-1),(-1,-1),(-1,0),(-1,1),(0,1)]
 
-cdef class Board():
-
-    
-    cdef int n
+cdef class Board:
+    cdef public int n
     cdef public int[:,:] pieces
 
-    def __init__(self, int n):
-        "Set up initial board configuration."
+    def __init__(self, int n, _pieces=None):
+        """Set up initial board configuration."""
 
         self.n = n
-        # Create the empty board array.
-        self.pieces = np.zeros((self.n, self.n), dtype=np.intc)
 
-        # Set up the initial 4 pieces.
-        self.pieces[self.n//2-1,self.n//2] = 1
-        self.pieces[self.n//2,self.n//2-1] = 1
-        self.pieces[self.n//2-1,self.n//2-1] = -1
-        self.pieces[self.n//2,self.n//2] = -1
+        if _pieces is not None:
+            self.pieces = _pieces
+        else:
+            # Create the empty board array.
+            self.pieces = np.zeros((self.n, self.n), dtype=np.intc)
+
+            # Set up the initial 4 pieces.
+            self.pieces[self.n//2-1,self.n//2] = 1
+            self.pieces[self.n//2,self.n//2-1] = 1
+            self.pieces[self.n//2-1,self.n//2-1] = -1
+            self.pieces[self.n//2,self.n//2] = -1
 
     def __getstate__(self):
         return self.n, np.asarray(self.pieces)
@@ -51,7 +53,7 @@ cdef class Board():
         self.pieces = np.asarray(pieces)
 
     # add [][] indexer syntax to the Board
-    def __getitem__(self, index):
+    def __getitem__(self, Py_ssize_t index):
         return self.pieces[index]
 
     def count_diff(self, int color):
@@ -59,12 +61,14 @@ cdef class Board():
         (1 for white, -1 for black, 0 for empty spaces)"""
         cdef int count = 0
         cdef Py_ssize_t x, y
+
         for y in range(self.n):
             for x in range(self.n):
-                if self.pieces[x,y]==color:
+                if self.pieces[x,y] == color:
                     count += 1
-                if self.pieces[x,y]==-color:
+                if self.pieces[x,y] == -color:
                     count -= 1
+
         return count
 
     cpdef set get_legal_moves(self, int color):
@@ -81,11 +85,11 @@ cdef class Board():
                     moves.update(self.get_moves_for_square((x,y)))
         return moves
 
-    def has_legal_moves(self, int color):
+    cpdef bint has_legal_moves(self, int color):
         cdef Py_ssize_t x, y
         for y in range(self.n):
             for x in range(self.n):
-                if self.pieces[x,y]==color:
+                if self.pieces[x,y] == color:
                     if len(self.get_moves_for_square((x,y)))>0:
                         return True
         return False

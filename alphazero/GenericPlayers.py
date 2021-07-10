@@ -1,13 +1,12 @@
-from typing import Callable
-
 from alphazero.MCTS import MCTS
 from alphazero.Game import GameState
 from alphazero.NNetWrapper import NNetWrapper
-from alphazero.utils import dotdict, default_temp_scaling
+from alphazero.utils import dotdict
 
 from abc import ABC, abstractmethod
 
 import numpy as np
+import torch
 
 
 class BasePlayer(ABC):
@@ -16,6 +15,10 @@ class BasePlayer(ABC):
 
     def __call__(self, *args, **kwargs):
         return self.play(*args, **kwargs)
+
+    @property
+    def supports_process(self) -> bool:
+        return False
 
     def update(self, state: GameState, action: int) -> None:
         pass
@@ -26,6 +29,9 @@ class BasePlayer(ABC):
     @abstractmethod
     def play(self, state: GameState) -> int:
         pass
+
+    def process(self, batch):
+        raise NotImplementedError
 
 
 class RandomPlayer(BasePlayer):
@@ -97,9 +103,37 @@ class MCTSPlayer(BasePlayer):
         policy = self.mcts.probs(state, self.temp)
         
         if self.verbose:
-            # print('max tree depth:', len(self.mcts.path))
+            print('max tree depth:', self.mcts.depth)
             _, value = self.nn.predict(state.observation())
             print(f'value for player {state.current_player()}: {value}')
             print(f'policy: {policy}')
 
         return np.random.choice(len(policy), p=policy)
+
+
+class RawMCTSPlayer(MCTSPlayer):
+    def __init__(self, game_cls: GameState, args: dotdict, verbose=False):
+        super().__init__(game_cls, None, args, verbose)
+        self._POLICY_SIZE = self.game_cls.action_size()
+        self._POLICY_FILL_VALUE = 1 / self._POLICY_SIZE
+        self._VALUE_SIZE = len(self.game_cls.get_players()) + 1
+
+    @property
+    def supports_process(self) -> bool:
+        return True
+
+    def play(self, state) -> int:
+        self.mcts.raw_search(state, self.args.numMCTSSims, False)
+        self.temp = self.args.temp_scaling_fn(self.temp, state.turns, self.args.max_moves)
+        policy = self.mcts.probs(state, self.temp)
+
+        if self.verbose:
+            print('max tree depth:', self.mcts.depth)
+            #print(f'value for player {state.current_player()}: {value}')
+            print(f'policy: {policy}')
+
+        return np.random.choice(len(policy), p=policy)
+
+    def process(self, batch: torch.Tensor):
+        return torch.full((batch.shape[0], self._POLICY_SIZE), self._POLICY_FILL_VALUE).to(batch.device), \
+               torch.zeros(batch.shape[0], self._VALUE_SIZE).to(batch.device)

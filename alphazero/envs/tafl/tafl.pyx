@@ -1,4 +1,5 @@
 # cython: language_level=3
+# cython: profile=True
 
 import pyximport; pyximport.install()
 
@@ -13,13 +14,13 @@ def _get_board():
     return Board(
         GAME_VARIANT,
         max_repeats=MAX_REPEATS,
-        _store_past_states=True,
+        _store_past_states=False,
         _max_past_states=min((MAX_REPEATS + 1) * NUM_PLAYERS, NUM_STACKED_OBSERVATIONS - 1)
     )
 
 
 GAME_VARIANT = variants.hnefatafl
-MAX_REPEATS = 3  # N-fold repetition loss
+MAX_REPEATS = 0  # N-fold repetition loss
 NUM_PLAYERS = 2
 PLAYERS = list(range(NUM_PLAYERS))
 NUM_STACKED_OBSERVATIONS = 1
@@ -39,7 +40,7 @@ def _board_from_numpy(np_board: np.ndarray) -> Board:
 
 
 def _board_to_numpy(board: Board) -> np.ndarray:
-    return np.array([[int(tile) for tile in row] for row in board])
+    return np.array([[int(tile) for tile in row] for row in board._board])
 
 
 def get_move(board: Board, action: int) -> Move:
@@ -110,8 +111,8 @@ def _get_observation(board: Board, const_max_player: int, const_max_turns: int, 
 
 
 class TaflGame(GameState):
-    def __init__(self):
-        super().__init__(_get_board())
+    def __init__(self, _board=None):
+        super().__init__(_board or _get_board())
 
     def __eq__(self, other: 'TaflGame') -> bool:
         return self.__dict__ == other.__dict__
@@ -125,8 +126,7 @@ class TaflGame(GameState):
         return (1, -1)[2 - player.value]
 
     def clone(self) -> 'GameState':
-        g = TaflGame()
-        g._board = self._board.copy()
+        g = TaflGame(self._board.copy(store_past_states=self._board._store_past_states))
         g._player = self._player
         g.turns = self.turns
         return g
@@ -145,7 +145,7 @@ class TaflGame(GameState):
 
     def valid_moves(self):
         valids = [0] * self.action_size()
-        legal_moves = self._board.all_valid_moves(self._get_piece_type(self.current_player()))
+        legal_moves = self._board.all_valid_moves(self._board.to_play())
 
         for move in legal_moves:
             valids[get_action(self._board, move)] = 1
@@ -185,27 +185,32 @@ class TaflGame(GameState):
 
         for i in range(1, 5):
             for flip in (False, True):
-                state = np.rot90(np.array(self._board), i)
+                state = np.rot90(np.array(self._board._board), i)
                 if flip:
                     state = np.fliplr(state)
-
-                num_past_states = min(
-                    NUM_STACKED_OBSERVATIONS - 1,
-                    len(self._board._past_states) if self._board._store_past_states else 0
-                )
-                past_states = [None] * num_past_states
-                for idx in range(num_past_states):
-                    past = self._board._past_states[idx]
-                    b = np.rot90(np.array(past[0]._board), i)
-                    if flip:
-                        b = np.fliplr(b)
-                    past_states[idx] = (self._board.copy(store_past_states=False, state=b.tolist()), past[1])
+                
+                if self._board._store_past_states:
+                    num_past_states = min(
+                        NUM_STACKED_OBSERVATIONS - 1,
+                        len(self._board._past_states)
+                    )
+                    past_states = [None] * num_past_states
+                    for idx in range(num_past_states):
+                        past = self._board._past_states[idx]
+                        b = np.rot90(np.array(past[0]._board), i)
+                        if flip:
+                            b = np.fliplr(b)
+                        past_states[idx] = (self._board.copy(store_past_states=False, state=b.tolist()), past[1])
+                else:
+                    past_states = None
 
                 new_b = self._board.copy(
                     store_past_states=self._board._store_past_states,
                     state=state.tolist(),
                     past_states=past_states
                 )
+                if not past_states:
+                    new_b._past_states = [s.copy(new_b) for s in new_b._past_states]
 
                 new_pi = [0] * action_size
                 for action, prob in enumerate(pi):

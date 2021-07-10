@@ -1,4 +1,5 @@
 # cython: language_level=3
+# cython: profile=True
 from hnefatafl.engine import variants
 from boardgame import errors, BaseTile, BaseBoard, BasePiece, Move
 
@@ -23,41 +24,49 @@ class Piece(BasePiece):
         :param pos_y: :type int: y position of piece in the board
         """
         self.__white = piece_type == PieceType.white or piece_type == PieceType.king
-        self.__king = piece_type == PieceType.king
+        self._king = piece_type == PieceType.king
         super().__init__(self.__white, piece_type, piece_id, pos_x, pos_y)
 
-    '''
-    def __repr__(self):
-        return f'{self.__class__}{self.__dict__}'
-    '''
+    def copy(self) -> 'Piece':
+        p = super().copy()
+        p._king = self._king
+        return p
 
     @property
     def is_king(self):
-        return self.__king
+        return self._king
 
 
 class TileType(IntEnum):
     normal = 0
     special = 4
-    s_exit = 5
+    exit = 5
 
 
 class Tile(BaseTile):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self.is_exit = False
-        if self.type == TileType.s_exit:
+        if self.type == TileType.exit:
             self.is_exit = True
             self.type = TileType.special
 
-    #def __repr__(self):
-    #    return f'{self.__class__}{self.__dict__}'
+    def __eq__(self, other):
+        return super().__eq__(other) and self.is_exit == other.is_exit
+
+    def __hash__(self):
+        return super().__hash__() + self.is_exit
 
     def __str__(self):
         return self.to_string(add_values=False)
 
+    def copy(self) -> 'Tile':
+        tile = super().copy()
+        tile.is_exit = self.is_exit
+        return tile
+
     def to_string(self, add_values=True, piece_priority=True):
-        string = self.type.value if not self.is_exit else TileType.s_exit.value
+        string = self.type.value if not self.is_exit else TileType.exit.value
         if self.piece is not None and piece_priority:
             if add_values:
                 string += self.piece.type.value
@@ -72,8 +81,9 @@ class Tile(BaseTile):
 
 
 class Board(BaseBoard):
-    def __init__(self, board: Union['Board', str, list] = variants.hnefatafl, *args,
+    def __init__(self, board: Union['Board', str, list] = variants.hnefatafl, first_repeat_winner=True, *args,
                  num_start_white=None, num_start_black=None, **kwargs):
+        self.first_repeat_winner = first_repeat_winner
         self.king = None
         self.king_captured = False
         self.king_escaped = False
@@ -84,13 +94,16 @@ class Board(BaseBoard):
         self.__first_repeat = None
 
         super().__init__(board=board, *args, **kwargs)
-        self.num_start_white = num_start_white or self.num_white
         self.num_start_black = num_start_black or self.num_black
+        self.num_start_white = num_start_white or self.num_white
     
     def copy(self, *args, **kwargs):
         board = super().copy(*args, **kwargs)
+        board.king = board.get_king()
         board.king_escaped = self.king_escaped
         board.king_captured = self.king_captured
+        board.num_start_black = self.num_start_black
+        board.num_start_white = self.num_start_white
         board.__first_repeat = self.__first_repeat
         return board
 
@@ -112,7 +125,7 @@ class Board(BaseBoard):
                 tile_type = None
                 piece = None
 
-                if n == TileType.normal.value or n == TileType.special.value or n == TileType.s_exit.value:
+                if n == TileType.normal.value or n == TileType.special.value or n == TileType.exit.value:
                     tile_type = TileType(n)
                 elif n == PieceType.black.value or n == PieceType.white.value or n == PieceType.king.value:
                     piece = PieceType(n)
@@ -120,8 +133,8 @@ class Board(BaseBoard):
                 elif n == TileType.special.value + PieceType.king.value:
                     tile_type = TileType.special
                     piece = PieceType.king
-                elif n == TileType.s_exit.value + PieceType.king.value:
-                    tile_type = TileType.s_exit
+                elif n == TileType.exit.value + PieceType.king.value:
+                    tile_type = TileType.exit
                     piece = PieceType.king
                     self.king_escaped = True
                 else:
@@ -149,10 +162,7 @@ class Board(BaseBoard):
         return len([piece for piece in self.pieces if piece.is_black])
 
     def num_repeats(self, piece_type: PieceType) -> int:
-        if self._store_past_states:
-            return self._repeats_from(int(piece_type != self.to_play()))
-        else:
-            return self._repeats_from(piece_type=piece_type)
+        return self._repeats_from(int(piece_type != self.to_play()))
 
     def get_team_colour(self, piece_type: PieceType) -> PieceType:
         return PieceType.white if piece_type == PieceType.king else piece_type
@@ -166,15 +176,15 @@ class Board(BaseBoard):
         self._update_game_over()
         if (
             self.king_captured
-            or self.__first_repeat == PieceType.white
-            or not len(self.all_valid_moves(PieceType.white))
+            or ((self.__first_repeat == PieceType.black) if self.first_repeat_winner else (self.__first_repeat == PieceType.white))
+            or not self.has_valid_moves(PieceType.white)
         ):
             return PieceType.black
 
         if (
             self.king_escaped
-            or self.__first_repeat == PieceType.black
-            or not len(self.all_valid_moves(PieceType.black))
+            or ((self.__first_repeat == PieceType.white) if self.first_repeat_winner else (self.__first_repeat == PieceType.black))
+            or not self.has_valid_moves(PieceType.black)
         ):
             return PieceType.white
 
@@ -182,10 +192,9 @@ class Board(BaseBoard):
         return self.get_winner() is not None
 
     def to_play(self) -> PieceType:
-        """Get the player who's turn it is based on the board state as a PieceType. Assumes turns are done legally."""
         return PieceType(2 - self.num_turns % 2)
 
-    def valid_moves(self, tile_or_piece: Union[Tile, Piece], ret_moves=True) -> Union[Set[Move], Set[Tile]]:
+    def valid_moves(self, tile_or_piece: Union[Tile, Piece], ret_moves=True) -> Union[List[Move], List[Tile]]:
         """
         Get the valid moves of a piece
         :param tile_or_piece: :type hnefatafl.piece.Piece or hnefatafl.board.Tile or int,int: piece or tile or
@@ -193,15 +202,15 @@ class Board(BaseBoard):
         :param ret_moves: whether to return the move objects or the tiles instead
         :return: :type set(hnefatafl.board.Tile): set of tiles that the piece can move to
         """
-        moves = set()
+        moves = []
         from_tile = self.get_tile(tile_or_piece)
         piece = self.get_piece(tile_or_piece)
         assert piece is not None
 
         def do_check(tile: Tile) -> bool:
             def add_move(t: Tile):
-                if ret_moves: moves.add(Move(self, from_tile, t))
-                else: moves.add(t)
+                if ret_moves: moves.append(Move(self, from_tile, t, _check_in_bounds=False))
+                else: moves.append(t)
 
             allowed = tile.piece is None
             if piece.is_king:
@@ -247,6 +256,12 @@ class Board(BaseBoard):
             moves.update(self.valid_moves(self.king))
 
         return moves
+
+    def has_valid_moves(self, piece_type: PieceType) -> bool:
+        for piece in self.pieces:
+            if piece.type == piece_type and self.valid_moves(piece):
+                return True
+        return False
 
     @staticmethod
     def __blocked(t: Tile, king=False) -> bool:
@@ -382,7 +397,7 @@ class Board(BaseBoard):
 
         if self.max_repeats:
             piece_type = self.get_team_colour(piece.type)
-            if not self.__first_repeat and self._repeat_exceeded(piece_type):
+            if not self.__first_repeat and self._repeat_exceeded():
                 self.__first_repeat = piece_type
 
         if _check_game_end:

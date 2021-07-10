@@ -15,8 +15,8 @@ OBSERVATION_SIZE = (NUM_CHANNELS, BOARD_SIZE, BOARD_SIZE)
 
 
 class OthelloGame(GameState):
-    def __init__(self):
-        super().__init__(self._get_board())
+    def __init__(self, _board=None):
+        super().__init__(_board or self._get_board())
 
     def __hash__(self) -> int:
         return hash(self._board.pieces.tobytes() + bytes([self.turns]) + bytes([self._player]))
@@ -28,13 +28,16 @@ class OthelloGame(GameState):
             and self.turns == other.turns
         )
 
+    def display(self):
+        display(self._board.pieces)
+
     @staticmethod
-    def _get_board():
-        return Board(BOARD_SIZE)
+    def _get_board(*args, **kwargs):
+        return Board(BOARD_SIZE, *args, **kwargs)
 
     def clone(self) -> 'OthelloGame':
-        game = OthelloGame()
-        game._board.pieces = np.copy(np.asarray(self._board.pieces))
+        board = self._get_board(_pieces=np.copy(np.asarray(self._board.pieces)))
+        game = OthelloGame(_board=board)
         game._player = self._player
         game.turns = self.turns
         return game
@@ -51,23 +54,26 @@ class OthelloGame(GameState):
     def get_players() -> List[int]:
         return PLAYERS
 
+    def _player_range(self):
+        return (1, -1)[self.current_player()]
+
     def valid_moves(self):
         # return a fixed size binary vector
         valids = [0] * self.action_size()
 
-        for x, y in self._board.get_legal_moves(self.current_player()):
+        for x, y in self._board.get_legal_moves(self._player_range()):
             valids[self._board.n * x + y] = 1
 
         return np.array(valids, dtype=np.intc)
 
     def play_action(self, action: int) -> None:
         move = (action // self._board.n, action % self._board.n)
-        self._board.execute_move(move, self.current_player())
+        self._board.execute_move(move, self._player_range())
         self._update_turn()
 
     def win_state(self) -> Tuple[bool, ...]:
-        result = [False] * 3
-        player = (1, -1)[self.current_player()]
+        result = [False] * (NUM_PLAYERS + 1)
+        player = self._player_range()
 
         if self._board.has_legal_moves(player):
             return tuple(result)
@@ -87,8 +93,8 @@ class OthelloGame(GameState):
         # mirror, rotational
         assert (len(pi) == self._board.n ** 2)
 
-        pi_board = np.reshape(pi[:-1], (self._board.n, self._board.n))
-        l = []
+        pi_board = np.reshape(pi, (self._board.n, self._board.n))
+        result = []
 
         for i in range(1, 5):
             for j in [True, False]:
@@ -99,13 +105,13 @@ class OthelloGame(GameState):
                     new_pi = np.fliplr(new_pi)
 
                 gs = self.clone()
-                gs._board = new_b
-                l.append((gs, new_pi.ravel()))
+                gs._board.pieces = new_b
+                result.append((gs, new_pi.ravel()))
 
-        return l
+        return result
 
 
-def display(board):
+def display(board: np.ndarray):
     n = board.shape[0]
 
     for y in range(n):

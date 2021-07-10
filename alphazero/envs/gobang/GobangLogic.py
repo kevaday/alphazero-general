@@ -1,3 +1,6 @@
+import numpy as np
+
+
 class Board:
     """
     Author: MBoss
@@ -11,15 +14,19 @@ class Board:
     Squares are stored and manipulated as (x,y) tuples.
     x is the column, y is the row.
     """
-    def __init__(self, n, n_in_row):
+    def __init__(self, n, n_in_row, _pieces=None):
         """Set up initial board configuration."""
         self.n = n
         self.n_in_row = n_in_row
 
-        # Create the empty board array.
-        self.pieces = [None]*self.n
-        for i in range(self.n):
-            self.pieces[i] = [0]*self.n
+        if _pieces is not None:
+            self.pieces = _pieces
+        else:
+            # Create the empty board array.
+            self.pieces = [None]*self.n
+            for i in range(self.n):
+                self.pieces[i] = [0]*self.n
+            self.pieces = np.array(self.pieces, dtype=np.intc)
 
     # add [][] indexer syntax to the Board
     def __getitem__(self, index): 
@@ -29,14 +36,14 @@ class Board:
         """Returns all the legal moves for the given color.
         (1 for white, -1 for black)
         """
-        moves = set()  # stores the legal moves.
+        moves = []  # stores the legal moves.
 
         # Get all empty locations.
         for y in range(self.n):
             for x in range(self.n):
                 if self[x][y] == 0:
-                    moves.add((x, y))
-        return list(moves)
+                    moves.append((x, y))
+        return moves
 
     def has_legal_moves(self):
         """Returns True if has legal move else False
@@ -79,4 +86,3 @@ class Board:
         (x, y) = move
         assert self[x][y] == 0, f'invalid move {move}'
         self[x][y] = color
-

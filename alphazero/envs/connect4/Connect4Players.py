@@ -5,7 +5,7 @@ import numpy as np
 
 
 class HumanConnect4Player(BasePlayer):
-    def play(self, state: GameState, turn: int) -> int:
+    def play(self, state: GameState) -> int:
         valid_moves = state.valid_moves()
         print('\nMoves:', [i for (i, valid)
                            in enumerate(valid_moves) if valid])
@@ -25,7 +25,7 @@ class OneStepLookaheadConnect4Player(BasePlayer):
     def __init__(self, verbose=False):
         self.verbose = verbose
 
-    def play(self, state: GameState, turn: int) -> int:
+    def play(self, state: GameState) -> int:
         valid_moves = state.valid_moves()
         win_move_set = set()
         fallback_move_set = set()

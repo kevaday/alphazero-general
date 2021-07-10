@@ -4,10 +4,10 @@ from alphazero.Arena import Arena
 from alphazero.GenericPlayers import RandomPlayer, NNPlayer, MCTSPlayer
 from alphazero.pytorch_classification.utils import Bar, AverageMeter
 
-from glob import glob
 from torch import multiprocessing as mp
 from torch.utils.data import TensorDataset, ConcatDataset, DataLoader
 from tensorboardX import SummaryWriter
+from glob import glob
 from queue import Empty
 from time import time
 
@@ -411,15 +411,20 @@ class Coach:
 
     def compareToBaseline(self, iteration):
         test_player = self.args.baselineTester()
+        can_process = test_player.supports_process and self.args.arenaBatched
 
-        cls = MCTSPlayer if self.args.arenaMCTS else NNPlayer
-        nnplayer = cls(self.game_cls, self.train_net, args=self.args)
+        if can_process:
+            test_player = test_player.process
+            nnplayer = self.train_net.process
+        else:
+            cls = MCTSPlayer if self.args.arenaMCTS else NNPlayer
+            nnplayer = cls(self.game_cls, self.train_net, args=self.args)
 
         print('PITTING AGAINST BASELINE: ' + self.args.baselineTester.__name__)
 
         players = [nnplayer]
         players.extend([test_player] * (len(self.game_cls.get_players()) - 1))
-        arena = Arena(players, self.game_cls, use_batched_mcts=False, args=self.args)
+        arena = Arena(players, self.game_cls, use_batched_mcts=can_process, args=self.args)
         wins, draws, winrates = arena.play_games(self.args.arenaCompareBaseline)
         winrate = winrates[0]
 

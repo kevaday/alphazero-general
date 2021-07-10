@@ -1,4 +1,5 @@
 # cython: language_level=3
+# cython: profile=True
 
 import torch.multiprocessing as mp
 import numpy as np
@@ -42,6 +43,9 @@ class SelfPlayAgent(mp.Process):
         if _is_arena:
             self.player_to_index = _player_order
             self.batch_indices = None
+        if _is_warmup:
+            self._WARMUP_POLICY = torch.full((game_cls.action_size(),), 1 / game_cls.action_size())
+            self._WARMUP_VALUE = torch.zeros(len(game_cls.get_players()) + 1)
 
         self.fast = False
         for _ in range(self.batch_size):
@@ -52,12 +56,25 @@ class SelfPlayAgent(mp.Process):
             self.mcts.append(self._get_mcts())
 
     def _get_mcts(self):
-        return MCTS(
-            len(self.game_cls.get_players()),
-            self.args.cpuct,
-            self.args.root_noise_frac,
-            self.args.root_policy_temp
-        )
+        def mcts():
+            return MCTS(
+                len(self.game_cls.get_players()),
+                self.args.cpuct,
+                self.args.root_noise_frac,
+                self.args.root_policy_temp
+            )
+
+        if self._is_arena:
+            return tuple([mcts() for _ in range(len(self.game_cls.get_players()))])
+        else:
+            return mcts()
+
+    def _mcts(self, index: int) -> MCTS:
+        mcts = self.mcts[index]
+        if self._is_arena:
+            return mcts[self.games[index].current_player()]
+        else:
+            return mcts
 
     def run(self):
         try:
@@ -85,16 +102,10 @@ class SelfPlayAgent(mp.Process):
             self.batch_indices = [[] for _ in self.game_cls.get_players()]
 
         for i in range(self.batch_size):
-            state = self.mcts[i].find_leaf(self.games[i])
+            state = self._mcts(i).find_leaf(self.games[i])
             if self._is_warmup:
-                policy = state.valid_moves()
-                if np.sum(policy) > 0:
-                    policy = policy / np.sum(policy)
-                    self.policy_tensor[i] = torch.from_numpy(policy)
-                    self.value_tensor[i] = torch.from_numpy(np.random.uniform(-1, 1, self.value_tensor[i].shape))
-                else:
-                    self.policy_tensor[i] = torch.zeros(self.games[i].action_size())
-                    self.value_tensor[i] = torch.zeros_like(self.value_tensor[i])
+                self.policy_tensor[i].copy_(self._WARMUP_POLICY)
+                self.value_tensor[i].copy_(self._WARMUP_VALUE)
                 continue
 
             data = torch.from_numpy(state.observation())
@@ -125,25 +136,28 @@ class SelfPlayAgent(mp.Process):
 
         for i in range(self.batch_size):
             index = self.batch_indices[i] if self._is_arena else i
-            self.mcts[index].process_results(
+            self._mcts(i).process_results(
                 self.games[i],
-                self.value_tensor[i].data.numpy(),
-                self.policy_tensor[i].data.numpy(),
-                self.args.add_root_noise
+                self.value_tensor[index].data.numpy(),
+                self.policy_tensor[index].data.numpy(),
+                False if self._is_arena else self.args.add_root_noise
             )
 
     def playMoves(self):
         for i in range(self.batch_size):
             self.temps[i] = self.args.temp_scaling_fn(self.temps[i], self.games[i].turns, self.args.max_moves)
-            policy = self.mcts[i].probs(self.games[i], self.temps[i])
+            policy = self._mcts(i).probs(self.games[i], self.temps[i])
             action = np.random.choice(self.games[i].action_size(), p=policy)
             if not self.fast and not self._is_arena:
                 self.histories[i].append((
                     self.games[i].clone(),
-                    self.mcts[i].probs(self.games[i])
+                    self._mcts(i).probs(self.games[i])
                 ))
 
-            self.mcts[i].update_root(self.games[i], action)
+            if self._is_arena:
+                [mcts.update_root(self.games[i], action) for mcts in self.mcts[i]]
+            else:
+                self._mcts(i).update_root(self.games[i], action)
             self.games[i].play_action(action)
             if self.args.mctsResetThreshold and self.games[i].turns >= self.next_reset[i]:
                 self.mcts[i] = self._get_mcts()

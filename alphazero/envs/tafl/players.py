@@ -9,13 +9,13 @@ class HumanTaflPlayer(BasePlayer):
         valid_moves = state.valid_moves()
 
         def string_to_action(player_inp: str) -> int:
-            try:
-                move_lst = [int(x) for x in player_inp.split()]
-                move = Move(state._board, move_lst)
-                return get_action(state._board, move)
-            except (ValueError, AttributeError, BoardGameException):
-                return -1
-
+            #try:
+            move_lst = [int(x) for x in player_inp.split()]
+            move = Move(state._board, move_lst)
+            return get_action(state._board, move)
+            #except (ValueError, AttributeError, BoardGameException):
+            #    return -1
+        
         action = string_to_action(input(f"Enter the move to play for the player {state.current_player()}: "))
         while action == -1 or not valid_moves[action]:
             action = string_to_action(input(f"Illegal move (action={action}, "

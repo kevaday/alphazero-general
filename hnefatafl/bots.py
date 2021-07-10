@@ -44,7 +44,7 @@ class AlphaZeroBot(BaseBot):
         self.__k['args'] = self._args if not self.use_default_args else None
         if self.__k.get('verbose'): print('Loading model with args:', self.__k['args'])
         cls = MCTSPlayer if self.use_mcts else NNPlayer
-        self._model_player = cls(nn, *self.__a, **self.__k)
+        self._model_player = cls(type(self._game), nn, *self.__a, **self.__k)
 
     def get_move(self, board: BaseBoard) -> Move or None:
         self.result = None
@@ -52,9 +52,9 @@ class AlphaZeroBot(BaseBot):
         from alphazero.envs.tafl.tafl import get_move
 
         self._game._board = board
-        self._game._player = (1, -1)[2 - board.to_play().value]
+        self._game._player = 2 - board.to_play().value
         self._game.turns = board.num_turns
-        action = self._model_player(self._game, self._game.turns)
+        action = self._model_player(self._game)
         move = get_move(board, action)
 
         self._result_lock.acquire()

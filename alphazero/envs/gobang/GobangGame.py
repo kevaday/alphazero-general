@@ -17,12 +17,12 @@ OBSERVATION_SIZE = (NUM_CHANNELS, BOARD_SIZE, BOARD_SIZE)
 
 
 class GobangGame(GameState):
-    def __init__(self):
-        super().__init__(self._get_board())
+    def __init__(self, _board=None):
+        super().__init__(_board or self._get_board())
 
     @staticmethod
-    def _get_board():
-        return Board(BOARD_SIZE, NUM_IN_ROW)
+    def _get_board(*args, **kwargs):
+        return Board(BOARD_SIZE, NUM_IN_ROW, *args, **kwargs)
 
     def __eq__(self, other: 'GobangGame') -> bool:
         return (
@@ -34,8 +34,8 @@ class GobangGame(GameState):
         )
 
     def clone(self) -> 'GobangGame':
-        g = GobangGame()
-        g._board = self._board
+        board = self._get_board(_pieces=np.copy(self._board.pieces))
+        g = GobangGame(_board=board)
         g._player = self._player
         g.turns = self.turns
         return g
@@ -56,14 +56,14 @@ class GobangGame(GameState):
         # return a fixed size binary vector
         valids = [0] * self.action_size()
 
-        for x, y in self._board.get_legal_moves(self.current_player()):
+        for x, y in self._board.get_legal_moves():
             valids[self._board.n * x + y] = 1
 
         return np.array(valids, dtype=np.intc)
 
     def play_action(self, action: int) -> None:
         move = (action // self._board.n, action % self._board.n)
-        self._board.execute_move(move, self.current_player())
+        self._board.execute_move(move, (1, -1)[self.current_player()])
         self._update_turn()
 
     def win_state(self) -> Tuple[bool, ...]:
@@ -87,8 +87,8 @@ class GobangGame(GameState):
         # mirror, rotational
         assert (len(pi) == self._board.n ** 2)
 
-        pi_board = np.reshape(pi[:-1], (self._board.n, self._board.n))
-        l = []
+        pi_board = np.reshape(pi, (self._board.n, self._board.n))
+        result = []
 
         for i in range(1, 5):
             for j in [True, False]:
@@ -99,10 +99,10 @@ class GobangGame(GameState):
                     new_pi = np.fliplr(new_pi)
 
                 gs = self.clone()
-                gs._board = new_b
-                l.append((gs, new_pi.ravel()))
+                gs._board.pieces = new_b
+                result.append((gs, new_pi.ravel()))
 
-        return l
+        return result
 
 
 def display(board):
