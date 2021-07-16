@@ -29,10 +29,18 @@ class AlphaZeroBot(BaseBot):
 
     def reset(self):
         from alphazero.envs.tafl.train import args
-        from alphazero.envs.tafl.tafl import TaflGame
+        from alphazero.envs.tafl.brandubh import TaflGame
         self._args = self._args or args
         self._game = TaflGame()
         if self._model_player and self.use_mcts: self._model_player.mcts.reset()
+    
+    def update(self, board: BaseBoard, move: Move):
+        from alphazero.envs.tafl.tafl import get_action
+        if self.use_mcts:
+            self._game._board = board
+            self._game._player = 2 - board.to_play().value
+            self._game._turns = board.num_turns
+            self._model_player.update(self._game, get_action(board, move))
 
     def load_model(self, model_path: str):
         from alphazero.NNetWrapper import NNetWrapper
@@ -53,7 +61,7 @@ class AlphaZeroBot(BaseBot):
 
         self._game._board = board
         self._game._player = 2 - board.to_play().value
-        self._game.turns = board.num_turns
+        self._game._turns = board.num_turns
         action = self._model_player(self._game)
         move = get_move(board, action)
 

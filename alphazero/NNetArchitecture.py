@@ -83,7 +83,7 @@ class NNetArchitecture(nn.Module):
         self.v_fc = mlp(
             self.board_x*self.board_y*args.value_head_channels,
             args.value_dense_layers,
-            len(game_cls.get_players()) + 1,  # 1 for draw
+            game_cls.num_players() + 1,  # 1 for draw
             activation=nn.Identity
         )
 

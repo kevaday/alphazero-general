@@ -37,9 +37,9 @@ class OneStepLookaheadConnect4Player(BasePlayer):
             new_state = state.clone()
             new_state.play_action(move)
             ws = new_state.win_state()
-            if ws[state.current_player()]:
+            if ws[state.player]:
                 win_move_set.add(move)
-            elif ws[new_state.current_player()]:
+            elif ws[new_state.player]:
                 stop_loss_move_set.add(move)
             else:
                 fallback_move_set.add(move)

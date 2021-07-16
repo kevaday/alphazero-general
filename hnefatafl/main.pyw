@@ -30,16 +30,15 @@ class SinglePlayerWindow(Ui_FrmLocalGame):
         super().__init__(game=game, playable=True, is_white=not self.bot_white)
 
         from alphazero.envs.tafl.train import args
-        args.numMCTSSims = 2000
-        args.temp = 0.1
-        args.tempThreshold = 2
+        args.numMCTSSims = 100
+        args.temp_scaling_fn = lambda x, y, z: 0
+        args.add_root_noise = args.add_root_temp = False
         args.cuda = False
         self.bot = AlphaZeroBot(
             game.white if self.bot_white else game.black,
             game.board.to_string(),
             use_default_args=False,
             verbose=True,
-            reset_mcts=False,
             args=args
         )
 
@@ -56,6 +55,8 @@ class SinglePlayerWindow(Ui_FrmLocalGame):
         if is_turn(self.bot_white, self.gameboard.game): self.do_bot_move()
 
     def do_bot_move(self):
+        if self.gameboard.game.board.num_turns:
+            self.bot.update(self.gameboard.game.board, self.gameboard.game.board.get_last_move())
         if not is_turn(self.bot_white, self.gameboard.game): return
         self.bot_thread = Thread(target=self.bot.get_move, args=(self.gameboard.game.board,))
         self.bot_thread.start()
@@ -67,6 +68,7 @@ class SinglePlayerWindow(Ui_FrmLocalGame):
             self.bot_timer.stop()
             self.bot_thread.join()
             self.gameboard.move_piece(move=self.bot.result, emit_move=False)
+            self.bot.update(self.gameboard.game.board, self.bot.result)
             self.gameboard.remove_highlights()
             self.gameboard.update()
         self.bot_lock.release()

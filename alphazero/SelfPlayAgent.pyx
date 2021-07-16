@@ -1,5 +1,4 @@
 # cython: language_level=3
-# cython: profile=True
 
 import torch.multiprocessing as mp
 import numpy as np
@@ -44,8 +43,10 @@ class SelfPlayAgent(mp.Process):
             self.player_to_index = _player_order
             self.batch_indices = None
         if _is_warmup:
-            self._WARMUP_POLICY = torch.full((game_cls.action_size(),), 1 / game_cls.action_size())
-            self._WARMUP_VALUE = torch.zeros(len(game_cls.get_players()) + 1)
+            action_size = game_cls.action_size()
+            self._WARMUP_POLICY = torch.full((action_size,), 1 / action_size).to(policy_tensor.device)
+            value_size = game_cls.num_players() + 1
+            self._WARMUP_VALUE = torch.full((value_size,), 1 / value_size).to(policy_tensor.device)
 
         self.fast = False
         for _ in range(self.batch_size):
@@ -56,23 +57,15 @@ class SelfPlayAgent(mp.Process):
             self.mcts.append(self._get_mcts())
 
     def _get_mcts(self):
-        def mcts():
-            return MCTS(
-                len(self.game_cls.get_players()),
-                self.args.cpuct,
-                self.args.root_noise_frac,
-                self.args.root_policy_temp
-            )
-
         if self._is_arena:
-            return tuple([mcts() for _ in range(len(self.game_cls.get_players()))])
+            return tuple([MCTS(self.args) for _ in range(self.game_cls.num_players())])
         else:
-            return mcts()
+            return MCTS(self.args)
 
     def _mcts(self, index: int) -> MCTS:
         mcts = self.mcts[index]
         if self._is_arena:
-            return mcts[self.games[index].current_player()]
+            return mcts[self.games[index].player]
         else:
             return mcts
 
@@ -98,8 +91,8 @@ class SelfPlayAgent(mp.Process):
 
     def generateBatch(self):
         if self._is_arena:
-            batch_tensor = [[] for _ in self.game_cls.get_players()]
-            self.batch_indices = [[] for _ in self.game_cls.get_players()]
+            batch_tensor = [[] for _ in range(self.game_cls.num_players())]
+            self.batch_indices = [[] for _ in range(self.game_cls.num_players())]
 
         for i in range(self.batch_size):
             state = self._mcts(i).find_leaf(self.games[i])
@@ -111,14 +104,14 @@ class SelfPlayAgent(mp.Process):
             data = torch.from_numpy(state.observation())
             if self._is_arena:
                 data = data.view(-1, *state.observation_size())
-                player = self.player_to_index[self.games[i].current_player()]
+                player = self.player_to_index[self.games[i].player]
                 batch_tensor[player].append(data)
                 self.batch_indices[player].append(i)
             else:
                 self.batch_tensor[i].copy_(data)
 
         if self._is_arena:
-            for player in self.game_cls.get_players():
+            for player in range(self.game_cls.num_players()):
                 player = self.player_to_index[player]
                 data = batch_tensor[player]
                 if data:
@@ -140,7 +133,8 @@ class SelfPlayAgent(mp.Process):
                 self.games[i],
                 self.value_tensor[index].data.numpy(),
                 self.policy_tensor[index].data.numpy(),
-                False if self._is_arena else self.args.add_root_noise
+                False if self._is_arena else self.args.add_root_noise,
+                False if self._is_arena else self.args.add_root_temp
             )
 
     def playMoves(self):

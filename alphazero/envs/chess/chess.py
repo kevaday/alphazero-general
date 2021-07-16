@@ -58,7 +58,7 @@ class ChessGame(GameState):
         g = ChessGame()
         g._board = self._board.copy()
         g._player = self._player
-        g.turns = self.turns
+        g._turns = self.turns
         return g
 
     @staticmethod

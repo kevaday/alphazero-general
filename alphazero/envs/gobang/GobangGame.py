@@ -6,7 +6,6 @@ from typing import List, Tuple, Any
 import numpy as np
 
 NUM_PLAYERS = 2
-PLAYERS = list(range(NUM_PLAYERS))
 NUM_CHANNELS = 1
 
 BOARD_SIZE = 15
@@ -37,12 +36,12 @@ class GobangGame(GameState):
         board = self._get_board(_pieces=np.copy(self._board.pieces))
         g = GobangGame(_board=board)
         g._player = self._player
-        g.turns = self.turns
+        g._turns = self.turns
         return g
 
     @staticmethod
-    def get_players() -> List[int]:
-        return PLAYERS
+    def num_players() -> int:
+        return NUM_PLAYERS
 
     @staticmethod
     def action_size() -> int:
@@ -63,7 +62,7 @@ class GobangGame(GameState):
 
     def play_action(self, action: int) -> None:
         move = (action // self._board.n, action % self._board.n)
-        self._board.execute_move(move, (1, -1)[self.current_player()])
+        self._board.execute_move(move, (1, -1)[self.player])
         self._update_turn()
 
     def win_state(self) -> Tuple[bool, ...]:

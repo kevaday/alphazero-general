@@ -5,8 +5,8 @@ from typing import List, Tuple, Any
 class GameState(ABC):
     def __init__(self, board):
         self._board = board
-        self._player = self.get_players()[0]
-        self.turns = 0
+        self._player = 0
+        self._turns = 0
 
     @abstractmethod
     def __eq__(self, other: 'GameState') -> bool:
@@ -42,25 +42,28 @@ class GameState(ABC):
 
     @staticmethod
     @abstractmethod
-    def get_players() -> List[int]:
+    def num_players() -> int:
         """
         Returns:
-            players: a list of the players in the game.
-                     Should be list(range(N)) where N is the
-                     constant number of players in the game.
+            num_players: the number of total players participating in the game.
         """
         pass
 
-    def current_player(self) -> int:
+    @property
+    def player(self) -> int:
         return self._player
 
+    @property
+    def turns(self):
+        return self._turns
+
     def _next_player(self, player, turns=1):
-        return (player + turns) % len(self.get_players())
+        return (player + turns) % self.num_players()
 
     def _update_turn(self):
         """Should be called at the end of play_action"""
         self._player = self._next_player(self._player)
-        self.turns += 1
+        self._turns += 1
 
     @abstractmethod
     def play_action(self, action: int) -> None:

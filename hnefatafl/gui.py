@@ -266,7 +266,7 @@ class GameBoard(QtWidgets.QWidget):
     def update(self) -> None:
         self.boardUpdate.emit()
         board = self.game.board
-        last_move = board.get_last_move()
+        last_move = board.get_last_move() if board.num_turns else None
         tile = new_tile = None
         if last_move: tile, new_tile = last_move.tile, last_move.new_tile
         for y, row in enumerate(self.buttons):

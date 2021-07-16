@@ -17,7 +17,7 @@ if __name__ == '__main__':
 
     import random
 
-    args.numMCTSSims = 294
+    args.numMCTSSims = 2000
     args.arena_batch_size = 64
     args.temp_scaling_fn = lambda x, y, z: 0
 
@@ -28,11 +28,11 @@ if __name__ == '__main__':
 
     # nnet players
     nn1 = NNet(Game, args)
-    nn1.load_checkpoint('./checkpoint/connect4', 'iteration-0139.pkl')
+    nn1.load_checkpoint('./checkpoint/connect4', 'iteration-0200.pkl')
     #nn2 = NNet(Game, args)
     #nn2.load_checkpoint('./checkpoint/connect4', 'iteration-0094.pkl')
     #player1 = nn1.process
-    # player2 = nn2.process
+    #player2 = nn1.process
 
     # player2 = NNPlayer(g, nn1, args=args, verbose=True).play
     player1 = MCTSPlayer(Game, nn1, args=args, verbose=True)
@@ -42,7 +42,7 @@ if __name__ == '__main__':
     #player2 = RandomPlayer()
     #player2 = RawMCTSPlayer(Game, args).process
 
-    players = [player2, player1]
+    players = [player1, player2]
     random.shuffle(players)
     arena = Arena(players, Game, use_batched_mcts=True, args=args, display=display)
 

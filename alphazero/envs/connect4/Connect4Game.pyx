@@ -12,7 +12,6 @@ DEFAULT_HEIGHT = 6
 DEFAULT_WIDTH = 7
 DEFAULT_WIN_LENGTH = 4
 NUM_PLAYERS = 2
-PLAYERS = list(range(NUM_PLAYERS))
 MAX_TURNS = 42
 MULTI_PLANE_OBSERVATION = True
 NUM_CHANNELS = 4 if MULTI_PLANE_OBSERVATION else 1
@@ -39,12 +38,12 @@ class Connect4Game(GameState):
         game = Connect4Game()
         game._board.pieces = np.copy(np.asarray(self._board.pieces))
         game._player = self._player
-        game.turns = self.turns
+        game._turns = self.turns
         return game
 
     @staticmethod
-    def get_players() -> List[int]:
-        return PLAYERS
+    def num_players() -> int:
+        return NUM_PLAYERS
 
     @staticmethod
     def action_size() -> int:
@@ -58,7 +57,7 @@ class Connect4Game(GameState):
         return np.asarray(self._board.get_valid_moves())
 
     def play_action(self, action: int) -> None:
-        self._board.add_stone(action, (1, -1)[self.current_player()])
+        self._board.add_stone(action, (1, -1)[self.player])
         self._update_turn()
 
     def win_state(self) -> Tuple[bool, ...]:
@@ -80,7 +79,7 @@ class Connect4Game(GameState):
             pieces = np.asarray(self._board.pieces)
             player1 = np.where(pieces == 1, 1, 0)
             player2 = np.where(pieces == -1, 1, 0)
-            colour = np.full_like(pieces, self.current_player())
+            colour = np.full_like(pieces, self.player)
             turn = np.full_like(pieces, self.turns / MAX_TURNS, dtype=np.float32)
             return np.array([player1, player2, colour, turn], dtype=np.float32)
 

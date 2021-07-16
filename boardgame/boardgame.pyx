@@ -1,5 +1,4 @@
 # cython: language_level=3
-# cython: profile=True
 
 from boardgame.errors import InvalidMoveError
 from typing import Set, List, Callable, Union, Tuple, Optional, Iterator

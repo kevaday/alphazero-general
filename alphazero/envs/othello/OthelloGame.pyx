@@ -7,7 +7,6 @@ from alphazero.Game import GameState
 import numpy as np
 
 NUM_PLAYERS = 2
-PLAYERS = list(range(NUM_PLAYERS))
 NUM_CHANNELS = 1
 BOARD_SIZE = 8
 ACTION_SIZE = BOARD_SIZE ** 2
@@ -39,7 +38,7 @@ class OthelloGame(GameState):
         board = self._get_board(_pieces=np.copy(np.asarray(self._board.pieces)))
         game = OthelloGame(_board=board)
         game._player = self._player
-        game.turns = self.turns
+        game._turns = self.turns
         return game
 
     @staticmethod
@@ -51,11 +50,11 @@ class OthelloGame(GameState):
         return OBSERVATION_SIZE
 
     @staticmethod
-    def get_players() -> List[int]:
-        return PLAYERS
+    def num_players() -> int:
+        return NUM_PLAYERS
 
     def _player_range(self):
-        return (1, -1)[self.current_player()]
+        return (1, -1)[self.player]
 
     def valid_moves(self):
         # return a fixed size binary vector
@@ -80,9 +79,9 @@ class OthelloGame(GameState):
         elif self._board.has_legal_moves(-player):
             return tuple(result)
         elif self._board.count_diff(player) > 0:
-            result[self.current_player()] = True
+            result[self.player] = True
         else:
-            result[self._next_player(self.current_player())] = True
+            result[self._next_player(self.player)] = True
 
         return tuple(result)
 

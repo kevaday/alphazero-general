@@ -6,7 +6,6 @@ from alphazero.envs.tictactoe.TicTacToeLogic import Board
 import numpy as np
 
 NUM_PLAYERS = 2
-PLAYERS = list(range(NUM_PLAYERS))
 NUM_CHANNELS = 1
 BOARD_SIZE = 3
 ACTION_SIZE = BOARD_SIZE ** 2
@@ -33,12 +32,12 @@ class TicTacToeGame(GameState):
         g = TicTacToeGame()
         g._board.pieces = np.copy(self._board.pieces)
         g._player = self._player
-        g.turns = self.turns
+        g._turns = self.turns
         return g
 
     @staticmethod
-    def get_players() -> List[int]:
-        return PLAYERS
+    def num_players() -> int:
+        return NUM_PLAYERS
 
     @staticmethod
     def action_size() -> int:
@@ -49,7 +48,7 @@ class TicTacToeGame(GameState):
         return OBSERVATION_SIZE
 
     def _player_range(self):
-        return (1, -1)[self.current_player()]
+        return (1, -1)[self.player]
 
     def valid_moves(self):
         # return a fixed size binary vector
@@ -70,9 +69,9 @@ class TicTacToeGame(GameState):
         player = self._player_range()
 
         if self._board.is_win(player):
-            result[self.current_player()] = True
+            result[self.player] = True
         elif self._board.is_win(-player):
-            result[self._next_player(self.current_player())] = True
+            result[self._next_player(self.player)] = True
         elif not self._board.has_legal_moves():
             result[-1] = True
 

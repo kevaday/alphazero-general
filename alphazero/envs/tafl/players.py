@@ -16,7 +16,7 @@ class HumanTaflPlayer(BasePlayer):
             #except (ValueError, AttributeError, BoardGameException):
             #    return -1
         
-        action = string_to_action(input(f"Enter the move to play for the player {state.current_player()}: "))
+        action = string_to_action(input(f"Enter the move to play for the player {state.player}: "))
         while action == -1 or not valid_moves[action]:
             action = string_to_action(input(f"Illegal move (action={action}, "
                                             f"in valids: {bool(valid_moves[action])}). Enter a valid move: "))

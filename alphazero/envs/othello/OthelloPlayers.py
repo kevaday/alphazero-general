@@ -34,7 +34,7 @@ class GreedyOthelloPlayer(BasePlayer):
 
             next_state = state.clone()
             next_state.play_action(a)
-            candidates += [(-next_state._board.count_diff(next_state.current_player()), a)]
+            candidates += [(-next_state._board.count_diff(next_state.player), a)]
 
         candidates.sort()
         return candidates[0][1]

@@ -7,7 +7,7 @@ from alphazero.GenericPlayers import RawMCTSPlayer
 from alphazero.utils import dotdict
 
 args = get_args(
-    run_name='brandubh2',
+    run_name='brandubh',
     max_moves=DRAW_MOVE_COUNT,
     num_stacked_observations=NUM_STACKED_OBSERVATIONS,
     cpuct=2,
@@ -19,8 +19,6 @@ args = get_args(
     
     selfPlayModelIter=None,
     skipSelfPlayIters=None,
-    train_on_past_data=False,
-    past_data_run_name='brandubh',
     model_gating=True,
     max_gating_iters=None,
     numWarmupIters=1,
@@ -44,12 +42,12 @@ args = get_args(
         'weight_decay': 1e-4
     }),
 
-    depth=12,
-    num_channels=64,
-    value_head_channels=16,
-    policy_head_channels=16,
-    value_dense_layers=[1024, 512],
-    policy_dense_layers=[1024]
+    depth=4,
+    num_channels=32,
+    value_head_channels=4,
+    policy_head_channels=4,
+    value_dense_layers=[256, 128],
+    policy_dense_layers=[256]
 )
 args.scheduler_args.milestones = [75, 150]
 args.baselineTester = lambda: RawMCTSPlayer(Game, args)

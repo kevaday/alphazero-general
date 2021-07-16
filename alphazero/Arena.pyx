@@ -69,7 +69,7 @@ class Arena:
         see othello/OthelloPlayers.py for an example. See pit.py for pitting
         human players/other baselines with each other.
         """
-        num_players = len(game_cls.get_players())
+        num_players = game_cls.num_players()
         if len(players) != num_players:
             raise ValueError('Argument `players` must have the same amount of players as the game supports. '
                              f'Got {len(players)} player agents, while the game requires {num_players}')
@@ -130,19 +130,19 @@ class Arena:
         # Reset the state of the players if needed
         [p.reset() for p in self.players]
         state = self.game_cls()
-        player_to_index = _player_to_index or state.get_players().copy()
+        player_to_index = _player_to_index or list(range(state.num_players()))
 
         while True:
-            action = self.players[player_to_index[state.current_player()]](state)
+            action = self.players[player_to_index[state.player]](state)
 
             # valids = state.valid_moves()
-            # assert valids[action] > 0, ' '.join(map(str, [action, index, state.current_player(), turns, valids]))
+            # assert valids[action] > 0, ' '.join(map(str, [action, index, state.player, turns, valids]))
 
             [p.update(state, action) for p in self.players]
             state.play_action(action)
             
             if verbose:
-                print('Turn ', str(state.turns), 'Player ', str(state.current_player()), 'Action ', action)
+                print('Turn ', str(state.turns), 'Player ', str(state.player), 'Action ', action)
                 self.display(state)
             
             winstate = state.win_state()
@@ -170,7 +170,7 @@ class Arena:
         end = time()
         self.__reset_counts()
 
-        players = self.game_cls.get_players().copy()
+        players = list(range(self.game_cls.num_players()))
 
         def get_player_order():
             if len(players) == 2:
@@ -203,14 +203,15 @@ class Arena:
                 policy_tensors.append(torch.zeros(
                     [self.args.arena_batch_size, self.game_cls.action_size()]
                 ))
-                policy_tensors[i].pin_memory()
                 policy_tensors[i].share_memory_()
 
-                value_tensors.append(torch.zeros([self.args.arena_batch_size, len(self.game_cls.get_players()) + 1]))
-                value_tensors[i].pin_memory()
+                value_tensors.append(torch.zeros([self.args.arena_batch_size, self.game_cls.num_players() + 1]))
                 value_tensors[i].share_memory_()
 
                 batch_ready.append(mp.Event())
+                if self.args.cuda:
+                    policy_tensors[i].pin_memory()
+                    value_tensors[i].pin_memory()
 
                 agents.append(
                     SelfPlayAgent(i, self.game_cls, ready_queue, batch_ready[i],
@@ -235,8 +236,8 @@ class Arena:
                         batch = data[player]
                         if not isinstance(batch, list):
                             p, v = self.players[player](batch)
-                            policy.append(p)
-                            value.append(v)
+                            policy.append(p.to(policy_tensors[id].device))
+                            value.append(v.to(value_tensors[id].device))
 
                     policy_tensors[id].copy_(torch.cat(policy))
                     value_tensors[id].copy_(torch.cat(value))

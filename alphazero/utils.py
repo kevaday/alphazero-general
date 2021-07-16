@@ -28,10 +28,10 @@ def default_temp_scaling(*args, **kwargs) -> float:
 
 
 def get_game_results(result_queue, game_cls, _get_index=None):
-    player_to_index = {p: i for i, p in enumerate(game_cls.get_players())}
+    player_to_index = {p: i for i, p in enumerate(range(game_cls.num_players()))}
 
     num_games = result_queue.qsize()
-    wins = [0] * len(game_cls.get_players())
+    wins = [0] * game_cls.num_players()
     draws = 0
     game_len_sum = 0
 

@@ -34,7 +34,7 @@ class GreedyGobangPlayer(BasePlayer):
 
             next_state = state.clone()
             next_state.play_action(a)
-            candidates += [(int(next_state.win_state()[next_state.current_player()]), a)]
+            candidates += [(int(next_state.win_state()[next_state.player]), a)]
 
         candidates.sort()
         return candidates[0][1]

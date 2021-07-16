@@ -1,5 +1,5 @@
 # cython: language_level=3
-# cython: profile=True
+
 from hnefatafl.engine import variants
 from boardgame import errors, BaseTile, BaseBoard, BasePiece, Move
 

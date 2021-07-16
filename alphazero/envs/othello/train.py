@@ -8,10 +8,13 @@ from alphazero.envs.othello.OthelloPlayers import GreedyOthelloPlayer
 
 args = get_args(
     run_name='othello',
-    cpuct=2,
+    cpuct=4,
     numWarmupIters=1,
     baselineCompareFreq=1,
     pastCompareFreq=1,
+    numMCTSSims=100,
+    numFastSims=25,
+    numWarmupSims=10,
     baselineTester=GreedyOthelloPlayer,
     process_batch_size=128,
     train_batch_size=2048,

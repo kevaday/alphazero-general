@@ -1,4 +1,5 @@
 # cython: language_level=3
+# cython: profile=True
 
 import pyximport; pyximport.install()
 
@@ -14,12 +15,12 @@ def _get_board():
         GAME_VARIANT,
         max_repeats=MAX_REPEATS,
         _store_past_states=False,
-        _max_past_states=min((MAX_REPEATS + 1) * NUM_PLAYERS, NUM_STACKED_OBSERVATIONS - 1)
+        _max_past_states=14#max((MAX_REPEATS + 1) * NUM_PLAYERS, NUM_STACKED_OBSERVATIONS - 1)
     )
 
 
-GAME_VARIANT = variants.hnefatafl
-MAX_REPEATS = 0  # N-fold repetition loss
+GAME_VARIANT = variants.brandubh
+MAX_REPEATS = 3  # N-fold repetition loss
 NUM_PLAYERS = 2
 NUM_STACKED_OBSERVATIONS = 1
 NUM_BASE_CHANNELS = 5
@@ -30,7 +31,7 @@ ACTION_SIZE = b.width * b.height * (b.width + b.height - 2)
 OBS_SIZE = (NUM_CHANNELS, b.width, b.height)
 del b
 
-DRAW_MOVE_COUNT = 200
+DRAW_MOVE_COUNT = 100
 
 
 def _board_from_numpy(np_board: np.ndarray) -> Board:

@@ -10,6 +10,7 @@ from tensorboardX import SummaryWriter
 from glob import glob
 from queue import Empty
 from time import time
+from math import ceil
 
 import numpy as np
 import torch
@@ -28,12 +29,17 @@ DEFAULT_ARGS = dotdict({
     'train_steps_per_iteration': 256,
     'train_sample_ratio': 2,
     'autoTrainSteps': True,
+    'train_on_past_data': False,
+    'past_data_chunk_size': 25,
+    'past_data_run_name': 'boardgame',
     # should preferably be a multiple of process_batch_size and workers
     'gamesPerIteration': 64 * mp.cpu_count(),
     'minTrainHistoryWindow': 4,
     'maxTrainHistoryWindow': 20,
     'trainHistoryIncrementIters': 2,
     'max_moves': 128,
+    'num_players': 2,
+    'min_discount': 0.7,
     'num_stacked_observations': 8,
     'numWarmupIters': 2,  # Iterations where games are played randomly, 0 for none
     'skipSelfPlayIters': None,
@@ -49,6 +55,7 @@ DEFAULT_ARGS = dotdict({
     'root_policy_temp': 1.25,
     'root_noise_frac': 0.25,
     'add_root_noise': True,
+    'add_root_temp': True,
     'compareWithBaseline': True,
     'baselineTester': RandomPlayer,
     'arenaCompareBaseline': 16,
@@ -117,6 +124,7 @@ class Coach:
         self.train_net = nnet
         self.self_play_net = nnet.__class__(game_cls, args)
         self.args = args
+        self.args.num_players = self.game_cls.num_players()
 
         if self.args.load_model:
             networks = sorted(glob(self.args.checkpoint + '/' + self.args.run_name + '/*'))
@@ -170,13 +178,18 @@ class Coach:
 
             while model_iter <= self.args.numIters:
                 print(f'------ITER {model_iter}------')
-                if model_iter <= self.args.numWarmupIters:
-                    print('Warmup: random policy and value')
-                    self.warmup = True
-                elif self.warmup:
-                    self.warmup = False
 
-                if not self.args.skipSelfPlayIters or model_iter > self.args.skipSelfPlayIters:
+                if (
+                    (not self.args.skipSelfPlayIters
+                        or model_iter > self.args.skipSelfPlayIters)
+                    and not (self.args.train_on_past_data and model_iter == self.args.startIter)
+                ):
+                    if model_iter <= self.args.numWarmupIters:
+                        print('Warmup: random policy and value')
+                        self.warmup = True
+                    elif self.warmup:
+                        self.warmup = False
+
                     self.generateSelfPlayAgents()
                     self.processSelfPlayBatches(model_iter)
                     self.saveIterationSamples(model_iter)
@@ -223,21 +236,23 @@ class Coach:
             self.input_tensors.append(torch.zeros(
                 [self.args.process_batch_size, *self.game_cls.observation_size()]
             ))
-            self.input_tensors[i].pin_memory()
             self.input_tensors[i].share_memory_()
 
             self.policy_tensors.append(torch.zeros(
                 [self.args.process_batch_size, self.game_cls.action_size()]
             ))
-            self.policy_tensors[i].pin_memory()
             self.policy_tensors[i].share_memory_()
 
             self.value_tensors.append(torch.zeros(
-                [self.args.process_batch_size, len(self.game_cls.get_players()) + 1]
+                [self.args.process_batch_size, self.game_cls.num_players() + 1]
             ))
-            self.value_tensors[i].pin_memory()
             self.value_tensors[i].share_memory_()
             self.batch_ready.append(mp.Event())
+
+            if self.args.cuda:
+                self.input_tensors[i].pin_memory()
+                self.policy_tensors[i].pin_memory()
+                self.value_tensors[i].pin_memory()
 
             self.agents.append(
                 SelfPlayAgent(i, self.game_cls, self.ready_queue, self.batch_ready[i],
@@ -284,7 +299,7 @@ class Coach:
 
         data_tensor = torch.zeros([num_samples, *self.game_cls.observation_size()])
         policy_tensor = torch.zeros([num_samples, self.game_cls.action_size()])
-        value_tensor = torch.zeros([num_samples, len(self.game_cls.get_players()) + 1])
+        value_tensor = torch.zeros([num_samples, self.game_cls.num_players() + 1])
         for i in range(num_samples):
             data, policy, value = self.file_queue.get()
             data_tensor[i] = torch.from_numpy(data)
@@ -330,41 +345,77 @@ class Coach:
         self.games_played = mp.Value('i', 0)
 
     def train(self, iteration):
-        datasets = []
-        # currentHistorySize = self.args.numItersForTrainExamplesHistory
-        currentHistorySize = min(
-            max(
-                self.args.minTrainHistoryWindow,
-                (iteration + self.args.minTrainHistoryWindow) // self.args.trainHistoryIncrementIters
-            ),
-            self.args.maxTrainHistoryWindow
-        )
-        for i in range(max(1, iteration - currentHistorySize), iteration + 1):
-            filename = self.args.data + '/' + self.args.run_name + '/' + get_iter_file(i).replace('.pkl', '')
-            data_tensor = torch.load(filename + '-data.pkl')
-            policy_tensor = torch.load(filename + '-policy.pkl')
-            value_tensor = torch.load(filename + '-value.pkl')
-            datasets.append(
+        def add_tensor_dataset(train_iter, tensor_dataset_list, run_name=self.args.run_name):
+            filename = os.path.join(
+                os.path.join(self.args.data, run_name), get_iter_file(train_iter).replace('.pkl', '')
+            )
+            
+            try:
+                data_tensor = torch.load(filename + '-data.pkl')
+                policy_tensor = torch.load(filename + '-policy.pkl')
+                value_tensor = torch.load(filename + '-value.pkl')
+            except FileNotFoundError:
+                return
+            
+            tensor_dataset_list.append(
                 TensorDataset(data_tensor, policy_tensor, value_tensor)
             )
 
-        dataset = ConcatDataset(datasets)
-        dataloader = DataLoader(dataset, batch_size=self.args.train_batch_size, shuffle=True,
-                                num_workers=self.args.workers, pin_memory=True)
-                                
-        train_steps = (data_tensor.shape[0] * self.args.train_sample_ratio) // self.args.train_batch_size \
-            if self.args.autoTrainSteps else self.args.train_steps_per_iteration
+        def train_data(tensor_dataset_list):
+            dataset = ConcatDataset(tensor_dataset_list)
+            dataloader = DataLoader(dataset, batch_size=self.args.train_batch_size, shuffle=True,
+                                    num_workers=self.args.workers, pin_memory=True)
 
-        l_pi, l_v = self.train_net.train(dataloader, train_steps)
+            train_steps = len(dataset) * self.args.train_sample_ratio // self.args.train_batch_size \
+                if self.args.autoTrainSteps else self.args.train_steps_per_iteration
+
+            result = self.train_net.train(dataloader, train_steps)
+
+            del dataloader
+            del dataset
+
+            return result
+
+        if self.args.train_on_past_data and iteration == self.args.startIter:
+            next_start_iter = 1
+            total_iters = len(
+                glob(os.path.join(os.path.join(self.args.data, self.args.past_data_run_name), '*.pkl'))
+            ) // 3
+            num_chunks = ceil(total_iters / self.args.past_data_chunk_size)
+            print(f'Training on past data from run "{self.args.past_data_run_name}" in {num_chunks} chunks of '
+                  f'{self.args.past_data_chunk_size} iterations ({total_iters} iterations in total).')
+
+            for _ in range(num_chunks):
+                datasets = []
+                i = next_start_iter
+                for i in range(next_start_iter, min(
+                    next_start_iter + self.args.past_data_chunk_size, total_iters + 1
+                )):
+                    add_tensor_dataset(i, datasets, run_name=self.args.past_data_run_name)
+                next_start_iter = i + 1
+
+                l_pi, l_v = train_data(datasets)
+                del datasets
+        else:
+            datasets = []
+
+            # current_history_size = self.args.numItersForTrainExamplesHistory
+            current_history_size = min(
+                max(
+                    self.args.minTrainHistoryWindow,
+                    (iteration + self.args.minTrainHistoryWindow) // self.args.trainHistoryIncrementIters
+                ),
+                self.args.maxTrainHistoryWindow
+            )
+
+            [add_tensor_dataset(i, datasets) for i in range(max(1, iteration - current_history_size), iteration + 1)]
+            l_pi, l_v = train_data(datasets)
+
         self.writer.add_scalar('loss/policy', l_pi, iteration)
         self.writer.add_scalar('loss/value', l_v, iteration)
         self.writer.add_scalar('loss/total', l_pi + l_v, iteration)
 
         self._save_model(self.train_net, iteration)
-
-        del dataloader
-        del dataset
-        del datasets
 
     def compareToPast(self, model_iter):
         self._load_model(self.self_play_net, self.self_play_iter)
@@ -384,7 +435,7 @@ class Coach:
             pplayer = cls(self.game_cls, self.self_play_net, args=self.args)
 
         players = [nplayer]
-        players.extend([pplayer] * (len(self.game_cls.get_players()) - 1))
+        players.extend([pplayer] * (self.game_cls.num_players() - 1))
 
         arena = Arena(players, self.game_cls, use_batched_mcts=self.args.arenaBatched, args=self.args)
         wins, draws, winrates = arena.play_games(self.args.arenaCompare)
@@ -423,7 +474,7 @@ class Coach:
         print('PITTING AGAINST BASELINE: ' + self.args.baselineTester.__name__)
 
         players = [nnplayer]
-        players.extend([test_player] * (len(self.game_cls.get_players()) - 1))
+        players.extend([test_player] * (self.game_cls.num_players() - 1))
         arena = Arena(players, self.game_cls, use_batched_mcts=can_process, args=self.args)
         wins, draws, winrates = arena.play_games(self.args.arenaCompareBaseline)
         winrate = winrates[0]
