@@ -14,7 +14,7 @@ You may join the [Discord server](https://discord.gg/MVaHwGZpRC) if would like t
 3. **Batched MCTS**: bhandsconnect's repo already includes this for self play, but it has been expanded upon to be included in Arena for faster comparison of models.
 4. **Multiplayer Support**: Any number of players are supported! This allows for training on a greater variety of games such as many types of card games or something like Catan.
 5. **Warmup Iterations**: A few self play iterations in the beginning of training are performed using random policy and value to speed up initial generation of training data instead of using the model as it would be random anyways.
-6. **Root Dirichlet Noise and Temperature**: Allows for better exploration and MCTS doesn't get stuck in local minima as often.
+6. **Root Dirichlet Noise and Temperature, Discount**: Allows for better exploration and MCTS doesn't get stuck in local minima as often. Discount allows AlphaZero to "understand" the concept of time and chooses actions which lead to a winner more quickly/efficiently.
 7. **More Adjustable Parameters**: This implementation allows for the adjustment of numerous hyperparameters, allowing for high control over the training process. More on hyperparameters below where the usage of some are discussed.
 
 ## Getting Started
