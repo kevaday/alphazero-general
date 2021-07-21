@@ -48,6 +48,7 @@ cdef class Node:
     cdef public int _players
     cdef public tuple e
     cdef public float q
+    cdef public float v
     cdef public int n
     cdef public float p
     cdef public int player
@@ -59,6 +60,7 @@ cdef class Node:
         self._players = num_players
         self.e = tuple([False]*(num_players + 1))
         self.q = 0
+        self.v = 0
         self.n = 0
         self.p = 0
         self.player = 0
@@ -79,16 +81,18 @@ cdef class Node:
         for c in self._children:
             c.p = pi[c.a]
 
-    cdef float uct(self, float sqrtParentN):
-        return self.q + self.cpuct * self.p * sqrtParentN / (1 + self.n)
+    cdef float uct(self, float sqrtParentN, float fpu_value):
+        return (fpu_value if self.n == 0 else self.q) + self.cpuct * self.p * sqrtParentN / (1 + self.n)
 
-    cdef Node best_child(self):
+    cdef Node best_child(self, float fpu_reduction):
+        cdef float seen_policy = sum([c.p for c in self._children if c.n > 0])
+        cdef float fpu_value = self.v - fpu_reduction * sqrt(seen_policy)
         child = None
         cdef float curBest = -float('inf')
         cdef float sqrtN = sqrt(self.n)
         cdef Node c
         for c in self._children:
-            uct = c.uct(sqrtN)
+            uct = c.uct(sqrtN, fpu_value)
             if uct > curBest:
                 curBest = uct
                 child = c
@@ -110,26 +114,28 @@ def rebuild_mcts(num_players, cpuct, root, curnode, path):
 cdef class MCTS:
     cdef public float root_noise_frac
     cdef public float root_temp
-    cdef public float _min_discount
+    cdef public float min_discount
+    cdef public float fpu_reduction
     cdef public Node _root
     cdef public Node _curnode
-    cdef public list path
+    cdef public list _path
     cdef public int depth
     cdef public int max_depth
     cdef public int _discount_max_depth
     def __init__(self, args: dotdict):
         self.root_noise_frac = args.root_noise_frac
         self.root_temp = args.root_policy_temp
-        self._min_discount = args.min_discount
+        self.min_discount = args.min_discount
+        self.fpu_reduction = args.fpu_reduction
         self._root = Node(-1, args.cpuct, args.num_players)
         self._curnode = self._root
-        self.path = []
+        self._path = []
         self.depth = 0
         self.max_depth = 0
         self._discount_max_depth = 0
 
     # def __reduce__(self):
-    #   return rebuild_mcts, (self._root._players, self.cpuct, self._root, self._curnode, self.path)
+    #   return rebuild_mcts, (self._root._players, self.cpuct, self._root, self._curnode, self._path)
 
     cpdef search(self, gs, nn, int sims, bint add_root_noise, bint add_root_temp):
         cdef float[:] v
@@ -181,8 +187,8 @@ cdef class MCTS:
         gs = game_state.clone()
 
         while self._curnode.n > 0 and not any(self._curnode.e):
-            self.path.append(self._curnode)
-            self._curnode = self._curnode.best_child()
+            self._path.append(self._curnode)
+            self._curnode = self._curnode.best_child(self.fpu_reduction)
             gs.play_action(self._curnode.a)
             self.depth += 1
 
@@ -231,15 +237,17 @@ cdef class MCTS:
         cdef Node parent
         cdef float v
         cdef int i = 0
-        while self.path:
-            parent = self.path.pop()
+        while self._path:
+            parent = self._path.pop()
             player = parent.player
 
             v = value[player] + value[num_players] / num_players
             # Scale value to the range(-1, 1) and add discount
-            v = (2 * v - 1) * self._min_discount ** (i / self._discount_max_depth)
+            v = (2 * v - 1) * self.min_discount ** (i / self._discount_max_depth)
 
             self._curnode.q = (self._curnode.q * self._curnode.n + v) / (self._curnode.n + 1)
+            if self._curnode.n == 0:
+                self._curnode.v = v
             self._curnode.n += 1
             self._curnode = parent
             i += 1

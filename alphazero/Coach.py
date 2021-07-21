@@ -40,6 +40,7 @@ DEFAULT_ARGS = dotdict({
     'max_moves': 128,
     'num_players': 2,
     'min_discount': 0.7,
+    'fpu_reduction': 0.2,
     'num_stacked_observations': 8,
     'numWarmupIters': 2,  # Iterations where games are played randomly, 0 for none
     'skipSelfPlayIters': None,
