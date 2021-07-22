@@ -233,26 +233,29 @@ cdef class MCTS:
                 self._curnode.update_policy(pi)
 
         cdef Py_ssize_t num_players = gs.num_players()
-        cdef Py_ssize_t player
         cdef Node parent
         cdef float v
         cdef int i = 0
         while self._path:
             parent = self._path.pop()
-            player = parent.player
 
-            v = value[player] + value[num_players] / num_players
-            # Scale value to the range(-1, 1) and add discount
-            v = (2 * v - 1) * self.min_discount ** (i / self._discount_max_depth)
+            # get value scaled to the range(-1, 1)
+            v = self._get_value(value, parent.player, num_players)
+            # add discount only for current node's Q value
+            v *= (self.min_discount ** (i / self._discount_max_depth))
 
             self._curnode.q = (self._curnode.q * self._curnode.n + v) / (self._curnode.n + 1)
             if self._curnode.n == 0:
-                self._curnode.v = v
+                self._curnode.v = self._get_value(value, self._curnode.player, num_players)
             self._curnode.n += 1
             self._curnode = parent
             i += 1
 
         self._root.n += 1
+
+    cpdef float _get_value(float[:] value, Py_ssize_t player, Py_ssize_t num_players):
+        v = value[player] + value[num_players] / num_players
+        return 2 * v - 1
 
     cpdef int[:] counts(self, gs):
         cdef int[:] counts = np.zeros(gs.action_size(), dtype=np.intc)
