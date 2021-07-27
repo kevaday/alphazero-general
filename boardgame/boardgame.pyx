@@ -178,7 +178,7 @@ class BaseTile(object):
 
 
 class BaseBoard(ABC):
-    def __init__(self, board: Union['BaseBoard', str, list] = None, load_file: str = None, save_file: str = None,
+    def __init__(self, board: Union['BaseBoard', str, list] = None, save_file: str = None,
                  max_repeats: int = None, store_initial_state=False, custom=False,
                  _store_past_states=True, _max_past_states: int = None):
         self.__kwargs = locals()
@@ -191,7 +191,16 @@ class BaseBoard(ABC):
         self.__store_initial_state = store_initial_state and _store_past_states
         self._store_past_states = _store_past_states
         self._max_past_states = _max_past_states
+        self.width = self.height = self._board = None
+        self.load(board)
 
+        self._past_states = []
+        if _max_past_states is not None:
+            self._turn_count = 0
+        if self.store_initial_state:
+            self._update_state(move=None)
+
+    def load(self, board: Union['BaseBoard', str, list, None]):
         if isinstance(board, list):
             self._board = board
             self.height = len(board)
@@ -202,18 +211,13 @@ class BaseBoard(ABC):
         if board and not self._board:
             if isinstance(board, BaseBoard):
                 board = board.to_string()
-            self.load(board)
-        elif isinstance(board, str):
-            self.load_file(load_file)
+            self.load_str(board)
 
-        self._past_states = []
-        if _max_past_states is not None:
-            self._turn_count = 0
-        if self.store_initial_state:
-            self._update_state(move=None)
+        elif isinstance(board, str):
+            self.load_file(board)
 
     @abstractmethod
-    def load(self, data: str) -> List[str]:
+    def load_str(self, data: str) -> List[str]:
         rows = data.split('\n')
         self.height = len(rows)
         self.width = len(rows[0])
@@ -225,7 +229,7 @@ class BaseBoard(ABC):
     def load_file(self, path: str) -> None:
         with open(path, 'r') as f:
             data = f.read()
-        self.load(data)
+        self.load_str(data)
 
     def save(self):
         with open(self.save_file, 'w') as f:
@@ -361,7 +365,7 @@ class BaseBoard(ABC):
             raise NotImplementedError(
                 'Cannot undo the last state because past states are not stored in this instance of BaseBoard.'
             )
-        self.__init__(self._past_states.pop(0)[0])
+        self.load(self._past_states.pop(0)[0])
 
     def in_bounds(self, x, y):
         """
@@ -489,7 +493,7 @@ class BaseBoard(ABC):
         return self._past_states[index][1] if self._store_past_states else self._past_states[index]
 
     def get_last_move(self) -> Optional['Move']:
-        return self.get_past_move(0)
+        return self.get_past_move(0) if self.num_turns else None
 
     def reset(self):
         if self.store_initial_state and self._max_past_states is not None:
@@ -533,6 +537,10 @@ class Move(object):
             print('empty move, args: ', args)
 
         self.__piece = self.tile.piece or self.new_tile.piece
+
+    def __iter__(self):
+        yield self.tile
+        yield self.new_tile
 
     def __repr__(self):
         return f'({self.tile.x},{self.tile.y})->({self.new_tile.x},{self.new_tile.y})'

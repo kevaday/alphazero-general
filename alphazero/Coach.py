@@ -26,9 +26,9 @@ DEFAULT_ARGS = dotdict({
     'process_batch_size': 64,
     'train_batch_size': 512,
     'arena_batch_size': 32,
-    'train_steps_per_iteration': 256,
+    'train_steps_per_iteration': 64,
     'train_sample_ratio': 2,
-    'autoTrainSteps': True,
+    'autoTrainSteps': False,
     'train_on_past_data': False,
     'past_data_chunk_size': 25,
     'past_data_run_name': 'boardgame',
@@ -39,7 +39,7 @@ DEFAULT_ARGS = dotdict({
     'trainHistoryIncrementIters': 2,
     'max_moves': 128,
     'num_players': 2,
-    'min_discount': 0.7,
+    'min_discount': 1,
     'fpu_reduction': 0.2,
     'num_stacked_observations': 8,
     'numWarmupIters': 2,  # Iterations where games are played randomly, 0 for none
@@ -139,7 +139,8 @@ class Coach:
         else:
             self.self_play_iter = self.args.selfPlayModelIter or self.args.startIter
 
-        self._load_model(self.self_play_net, self.self_play_iter)
+        if self.args.model_gating:
+            self._load_model(self.self_play_net, self.self_play_iter)
         self.gating_counter = 0
         self.warmup = False
         self.agents = []
@@ -273,7 +274,8 @@ class Coach:
         while self.completed.value != self.args.workers:
             try:
                 id = self.ready_queue.get(timeout=1)
-                policy, value = self.self_play_net.process(self.input_tensors[id])
+                nnet = self.self_play_net if self.args.model_gating else self.train_net
+                policy, value = nnet.process(self.input_tensors[id])
                 self.policy_tensors[id].copy_(policy)
                 self.value_tensors[id].copy_(value)
                 self.batch_ready[id].set()
@@ -346,6 +348,8 @@ class Coach:
         self.games_played = mp.Value('i', 0)
 
     def train(self, iteration):
+        last_num_samples = 0
+        
         def add_tensor_dataset(train_iter, tensor_dataset_list, run_name=self.args.run_name):
             filename = os.path.join(
                 os.path.join(self.args.data, run_name), get_iter_file(train_iter).replace('.pkl', '')
@@ -355,20 +359,23 @@ class Coach:
                 data_tensor = torch.load(filename + '-data.pkl')
                 policy_tensor = torch.load(filename + '-policy.pkl')
                 value_tensor = torch.load(filename + '-value.pkl')
-            except FileNotFoundError:
+            except FileNotFoundError as e:
+                print('Warning: could not find tensor data. ' + str(e))
                 return
             
             tensor_dataset_list.append(
                 TensorDataset(data_tensor, policy_tensor, value_tensor)
             )
+            last_num_samples = data_tensor.size(0)
 
-        def train_data(tensor_dataset_list):
+        def train_data(tensor_dataset_list, train_on_all=False):
             dataset = ConcatDataset(tensor_dataset_list)
             dataloader = DataLoader(dataset, batch_size=self.args.train_batch_size, shuffle=True,
                                     num_workers=self.args.workers, pin_memory=True)
 
-            train_steps = len(dataset) * self.args.train_sample_ratio // self.args.train_batch_size \
-                if self.args.autoTrainSteps else self.args.train_steps_per_iteration
+            train_steps = len(dataset) // self.args.train_batch_size \
+               if train_on_all else (last_num_samples // self.args.batch_size
+                   if self.args.autoTrainSteps else self.args.train_steps_per_iteration)
 
             result = self.train_net.train(dataloader, train_steps)
 
@@ -395,7 +402,7 @@ class Coach:
                     add_tensor_dataset(i, datasets, run_name=self.args.past_data_run_name)
                 next_start_iter = i + 1
 
-                l_pi, l_v = train_data(datasets)
+                l_pi, l_v = train_data(datasets, train_on_all=True)
                 del datasets
         else:
             datasets = []
@@ -453,7 +460,7 @@ class Coach:
                  or self.gating_counter < self.args.max_gating_iters)
         ):
             self.gating_counter += 1
-        else:
+        elif self.args.model_gating:
             self.self_play_iter = model_iter
             self._load_model(self.self_play_net, self.self_play_iter)
             self.gating_counter = 0

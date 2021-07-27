@@ -92,7 +92,9 @@ class Connect4Game(GameState):
         return [(self.clone(), pi), (new_state, pi[::-1])]
 
 
-def display(board):
+def display(board, action=None):
+    if action:
+        print(f'Action: {action}, Move: {action + 1}')
     print(" -----------------------")
     #print(' '.join(map(str, range(len(board[0])))))
     print(board)

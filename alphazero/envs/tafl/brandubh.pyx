@@ -248,6 +248,11 @@ class TaflGame(GameState):
         return self.player * (1000 * result + black_pieces - white_pieces)
 
 
+def display(state: TaflGame, action: int = None):
+    print(f'Action: {action}, Move: {get_move(state._board, action)}')
+    print(state)
+
+
 def test_repeat(n):
     global GAME_VARIANT
     GAME_VARIANT = variants.hnefatafl

@@ -266,9 +266,10 @@ class GameBoard(QtWidgets.QWidget):
     def update(self) -> None:
         self.boardUpdate.emit()
         board = self.game.board
-        last_move = board.get_last_move() if board.num_turns else None
+        last_move = board.get_last_move()
         tile = new_tile = None
-        if last_move: tile, new_tile = last_move.tile, last_move.new_tile
+        if last_move: tile, new_tile = last_move
+
         for y, row in enumerate(self.buttons):
             for x, button in enumerate(row):
                 button.tile = board[y][x]
@@ -276,9 +277,13 @@ class GameBoard(QtWidgets.QWidget):
                     button.move_highlight = (button.tile == tile or button.tile == new_tile)
 
                 for piece in board.killed_pieces:
-                    button.piece_killed = (board[piece.y][piece.x] == button.tile)
+                    if board.get_tile(piece) == button.tile:
+                        button.piece_killed = True
+                        board.killed_pieces.remove(piece)
+                        break
 
                 button.update()
+
         super().update()
 
     """
@@ -338,14 +343,15 @@ class GameBoard(QtWidgets.QWidget):
                                                 self.height() // 2)
     """
 
-    def remove_highlights(self):
+    def remove_highlights(self, remove_killed=False):
         self.__selected = None
         for row in self.buttons:
             for button in row:
                 button.highlight = False
                 button.move_highlight = False
-                button.piece_killed = False
                 button.is_clicked = False
+                if remove_killed:
+                    button.piece_killed = False
 
     def highlight_buttons(self, source_tile: Tile):
         self.__selected = source_tile
@@ -377,9 +383,12 @@ class GameBoard(QtWidgets.QWidget):
         if self.is_white is not None and not is_turn(self.is_white, self.game): return
 
         if not tile.piece and self.is_highlight(tile):
-            try: self.move_piece(tile)
-            except (ValueError, BoardGameException): pass
-            self.remove_highlights()
+            remove_killed = True
+            try:
+                self.move_piece(tile)
+            except (ValueError, BoardGameException):
+                remove_killed = False
+            self.remove_highlights(remove_killed=remove_killed)
 
         elif not tile.piece and not self.is_highlight(tile):
             self.remove_highlights()

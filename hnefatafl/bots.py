@@ -29,14 +29,16 @@ class AlphaZeroBot(BaseBot):
 
     def reset(self):
         from alphazero.envs.tafl.train import args
-        from alphazero.envs.tafl.brandubh import TaflGame
-        self._args = self._args or args
+        from alphazero.envs.tafl.tafl import TaflGame
+        self._args = self._args if self._args is not None else args
         self._game = TaflGame()
-        if self._model_player and self.use_mcts: self._model_player.mcts.reset()
+        if self._model_player and self.use_mcts:
+            self._model_player.mcts.reset()
     
     def update(self, board: BaseBoard, move: Move):
-        from alphazero.envs.tafl.tafl import get_action
         if self.use_mcts:
+            from alphazero.envs.tafl.tafl import get_action
+
             self._game._board = board
             self._game._player = 2 - board.to_play().value
             self._game._turns = board.num_turns

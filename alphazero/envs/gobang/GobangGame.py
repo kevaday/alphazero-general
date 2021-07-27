@@ -15,12 +15,20 @@ ACTION_SIZE = BOARD_SIZE ** 2
 OBSERVATION_SIZE = (NUM_CHANNELS, BOARD_SIZE, BOARD_SIZE)
 
 
+def get_move(action: int, n: int) -> Tuple[int, int]:
+    return action // n, action % n
+
+
+def get_action(move: Tuple[int, int], n: int) -> int:
+    return n * move[0] + move[1]
+
+
 class GobangGame(GameState):
     def __init__(self, _board=None):
         super().__init__(_board or self._get_board())
 
     @staticmethod
-    def _get_board(*args, **kwargs):
+    def _get_board(*args, **kwargs) -> Board:
         return Board(BOARD_SIZE, NUM_IN_ROW, *args, **kwargs)
 
     def __eq__(self, other: 'GobangGame') -> bool:
@@ -55,13 +63,13 @@ class GobangGame(GameState):
         # return a fixed size binary vector
         valids = [0] * self.action_size()
 
-        for x, y in self._board.get_legal_moves():
-            valids[self._board.n * x + y] = 1
+        for move in self._board.get_legal_moves():
+            valids[get_action(move, self._board.n)] = 1
 
         return np.array(valids, dtype=np.intc)
 
     def play_action(self, action: int) -> None:
-        move = (action // self._board.n, action % self._board.n)
+        move = get_move(action, self._board.n)
         self._board.execute_move(move, (1, -1)[self.player])
         self._update_turn()
 
@@ -104,8 +112,11 @@ class GobangGame(GameState):
         return result
 
 
-def display(board):
+def display(board, action=None):
     n = board.shape[0]
+
+    if action:
+        print(f'Action: {action}, Move: {get_move(action, n)}')
 
     for y in range(n):
         print(y, "|", end="")

@@ -30,7 +30,7 @@ ACTION_SIZE = b.width * b.height * (b.width + b.height - 2)
 OBS_SIZE = (NUM_CHANNELS, b.width, b.height)
 del b
 
-DRAW_MOVE_COUNT = 200
+DRAW_MOVE_COUNT = 800
 
 
 def _board_from_numpy(np_board: np.ndarray) -> Board:
@@ -114,6 +114,9 @@ class TaflGame(GameState):
 
     def __eq__(self, other: 'TaflGame') -> bool:
         return self.__dict__ == other.__dict__
+
+    def __str__(self):
+        return str(self._board) + '\n'
 
     @staticmethod
     def _get_piece_type(player: int) -> PieceType:
@@ -245,6 +248,11 @@ class TaflGame(GameState):
         white_pieces = len(list(filter(lambda p: p.is_white, self._board.pieces)))
         black_pieces = len(list(filter(lambda p: p.is_black, self._board.pieces)))
         return self.player * (1000 * result + black_pieces - white_pieces)
+
+
+def display(state: TaflGame, action: int = None):
+    print(f'Action: {action}, Move: {get_move(state._board, action)}')
+    print(state)
 
 
 def test_repeat(n):

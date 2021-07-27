@@ -6,7 +6,7 @@ from alphazero.SelfPlayAgent import SelfPlayAgent
 from alphazero.pytorch_classification.utils import Bar, AverageMeter
 from alphazero.utils import dotdict, get_game_results
 
-from typing import Callable, List, Tuple
+from typing import Callable, List, Tuple, Optional
 from queue import Empty
 from time import time
 
@@ -55,7 +55,7 @@ class Arena:
             players: List[BasePlayer],
             game_cls,
             use_batched_mcts=True,
-            display: Callable = None,
+            display: Callable[[GameState, Optional[int]], None] = None,
             args: dotdict = None
     ):
         """
@@ -138,18 +138,20 @@ class Arena:
             # valids = state.valid_moves()
             # assert valids[action] > 0, ' '.join(map(str, [action, index, state.player, turns, valids]))
 
+            if verbose:
+                print(f'Turn {state.turns}, Player {state.player}')
+
             [p.update(state, action) for p in self.players]
             state.play_action(action)
-            
+
             if verbose:
-                print('Turn ', str(state.turns), 'Player ', str(state.player), 'Action ', action)
-                self.display(state)
+                self.display(state, action)
             
             winstate = state.win_state()
 
             if any(winstate):
                 if verbose:
-                    print("Game over: Turn ", str(state.turns), "Result ", str(winstate))
+                    print(f'Game over: Turn {state.turns}, Result {winstate}')
                     self.display(state)
 
                 return state, winstate

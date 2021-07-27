@@ -1,3 +1,6 @@
+import alphazero.MCTS
+
+
 class dotdict(dict):
     def __getattr__(self, name):
         if name.startswith('__'):
@@ -48,3 +51,32 @@ def get_game_results(result_queue, game_cls, _get_index=None):
                     wins[index] += 1
 
     return wins, draws, game_len_sum / num_games if num_games else 0
+
+
+def plot_mcts_tree(mcts, max_depth=2):
+    import networkx as nx
+    import matplotlib.pyplot as plt
+    G = nx.Graph()
+
+    global node_idx
+    node_idx = 0
+
+    def find_nodes(cur_node, _past_node=None, _past_i=None, _depth=0):
+        if _depth > max_depth: return
+        global node_idx
+        cur_idx = node_idx
+
+        G.add_node(cur_idx, a=cur_node.a, q=round(cur_node.q, 2), n=cur_node.n, v=round(cur_node.v, 2))
+        if _past_node:
+            G.add_edge(cur_idx, _past_i)
+        node_idx += 1
+
+        for node in cur_node._children:
+            find_nodes(node, cur_node, cur_idx, _depth+1)
+
+    find_nodes(mcts._root)
+    labels = {node: '\n'.join(['{}: {}'.format(k, v) for k, v in G.nodes[node].items()]) for node in G.nodes}
+    #pos = nx.spring_layout(G, k=0.15, iterations=50)
+    pos = nx.nx_agraph.graphviz_layout(G, prog='dot', args='-Gnodesep=1.0 -Goverlap=false')
+    nx.draw(G, pos, labels=labels)
+    plt.show()

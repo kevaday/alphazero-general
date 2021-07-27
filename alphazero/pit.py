@@ -38,7 +38,7 @@ if __name__ == '__main__':
     #player2 = RandomPlayer()
     player2 = GreedyTaflPlayer()
 
-    players = [player1, player2]
+    players = [player2, player1]
     arena = Arena(players, Game, use_batched_mcts=False, args=args, display=print)
     wins, draws, winrates = arena.play_game(verbose=True)
     for i in range(len(wins)):

@@ -1,7 +1,7 @@
 from alphazero.MCTS import MCTS
 from alphazero.Game import GameState
 from alphazero.NNetWrapper import NNetWrapper
-from alphazero.utils import dotdict
+from alphazero.utils import dotdict, plot_mcts_tree
 
 from abc import ABC, abstractmethod
 
@@ -78,17 +78,21 @@ class NNPlayer(BasePlayer):
 
 
 class MCTSPlayer(BasePlayer):
-    def __init__(self, game_cls: GameState, nn: NNetWrapper, args: dotdict, print_policy=False, verbose=False):
+    def __init__(self, game_cls: GameState, nn: NNetWrapper, args: dotdict, print_policy=False, verbose=False,
+                 average_value=False, draw_mcts=False, draw_depth=2):
         super().__init__(game_cls)
         self.nn = nn
         self.args = args
         self.temp = args.startTemp
         self.print_policy = print_policy
         self.verbose = verbose
+        self.average_value = average_value
+        self.draw_mcts = draw_mcts
+        self.draw_depth = draw_depth
         self.reset()
         if self.verbose:
             self.mcts.search(game_cls(), self.nn, self.args.numMCTSSims, args.add_root_noise, args.add_root_temp)
-            value = self.mcts.value()
+            value = self.mcts.value(self.average_value)
             self.__rel_val_split = value if value > 0.5 else 1 - value
             print('initial value:', self.__rel_val_split)
 
@@ -105,15 +109,21 @@ class MCTSPlayer(BasePlayer):
 
         if self.print_policy:
             print(f'policy: {policy}')
+
         if self.verbose:
             _, value = self.nn.predict(state.observation())
             print('max tree depth:', self.mcts.max_depth)
             print(f'raw network value: {value}')
-            value = self.mcts.value()
+
+            value = self.mcts.value(self.average_value)
             rel_val = 0.5 * (value - self.__rel_val_split) / (1 - self.__rel_val_split) + 0.5 \
                 if value >= self.__rel_val_split else (value / self.__rel_val_split) * 0.5
+
             print(f'value for player {state.player}: {value}')
             print('relative value:', rel_val)
+
+        if self.draw_mcts:
+            plot_mcts_tree(self.mcts, max_depth=self.draw_depth)
 
         action = np.random.choice(len(policy), p=policy)
         if self.verbose:

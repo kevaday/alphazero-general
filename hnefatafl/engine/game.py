@@ -50,11 +50,11 @@ class Game(BaseGame):
             self.board.move(move)
             if self.board.king_captured:
                 self._black_won()
-                return
             elif self.board.king_escaped:
                 self._white_won()
-                return
+
             self._update_turn()
+            if self.game_over: return
 
             # Check if moves available for each team. If not, opposing team wins
             if self.white.is_turn:
@@ -65,7 +65,7 @@ class Game(BaseGame):
                     self._white_won()
 
         else:  # It's not that player's turn
-            raise TurnError(f"The piece with coordinates {piece.x},{piece.y} cannot be moved because"
+            raise TurnError(f"The piece with coordinates {piece.x},{piece.y} cannot be moved because "
                             f"it is not {bool_to_colour(self.black.is_turn)}'s turn.")
 
     def __copy__(self, *args, **kwargs):

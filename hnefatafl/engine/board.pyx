@@ -107,8 +107,8 @@ class Board(BaseBoard):
         board.__first_repeat = self.__first_repeat
         return board
 
-    def load(self, data: str) -> None:
-        rows = super().load(data)
+    def load_str(self, data: str) -> None:
+        rows = super().load_str(data)
         piece_id = 0
 
         for y, line in enumerate(rows):

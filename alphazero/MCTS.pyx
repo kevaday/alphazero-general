@@ -14,6 +14,7 @@ from alphazero.utils import dotdict
 # import cython
 
 NOISE_ALPHA_RATIO = 10.83
+_DRAW_VALUE = 0.5
 
 np.seterr(all='raise')
 
@@ -116,6 +117,8 @@ cdef class MCTS:
     cdef public float root_temp
     cdef public float min_discount
     cdef public float fpu_reduction
+    cdef public float _cpuct
+    cdef public int _num_players
     cdef public Node _root
     cdef public Node _curnode
     cdef public list _path
@@ -127,7 +130,17 @@ cdef class MCTS:
         self.root_temp = args.root_policy_temp
         self.min_discount = args.min_discount
         self.fpu_reduction = args.fpu_reduction
-        self._root = Node(-1, args.cpuct, args.num_players)
+        self._cpuct = args.cpuct
+        self._num_players = args.num_players
+        self._root = Node(-1, self._cpuct, self._num_players)
+        self._curnode = self._root
+        self._path = []
+        self.depth = 0
+        self.max_depth = 0
+        self._discount_max_depth = 0
+
+    cpdef reset(self):
+        self._root = Node(-1, self._cpuct, self._num_players)
         self._curnode = self._root
         self._path = []
         self.depth = 0
@@ -235,27 +248,35 @@ cdef class MCTS:
         cdef Py_ssize_t num_players = gs.num_players()
         cdef Node parent
         cdef float v
+        cdef float discount
         cdef int i = 0
         while self._path:
             parent = self._path.pop()
-
-            # get value scaled to the range(-1, 1)
             v = self._get_value(value, parent.player, num_players)
-            # add discount only for current node's Q value
-            v *= (self.min_discount ** (i / self._discount_max_depth))
+
+            # apply discount only to current node's Q value
+            discount = (self.min_discount ** (i / self._discount_max_depth))
+            if v < _DRAW_VALUE:
+                # (1 - discount) + 1 to invert it because bad values far away
+                # are better than bad values close to root
+                discount = 2 - discount
+            elif v == _DRAW_VALUE:
+                # don't discount value in the rare case that it is a draw (0.5)
+                discount = 1
+            # scale value to the range [-1, 1]
+            v = 2 * v * discount - 1
 
             self._curnode.q = (self._curnode.q * self._curnode.n + v) / (self._curnode.n + 1)
             if self._curnode.n == 0:
-                self._curnode.v = self._get_value(value, self._curnode.player, num_players)
+                self._curnode.v = self._get_value(value, self._curnode.player, num_players) * 2 - 1
             self._curnode.n += 1
             self._curnode = parent
             i += 1
 
         self._root.n += 1
 
-    cpdef float _get_value(float[:] value, Py_ssize_t player, Py_ssize_t num_players):
-        v = value[player] + value[num_players] / num_players
-        return 2 * v - 1
+    cpdef float _get_value(self, float[:] value, Py_ssize_t player, Py_ssize_t num_players):
+        return value[player] + value[num_players] / num_players
 
     cpdef int[:] counts(self, gs):
         cdef int[:] counts = np.zeros(gs.action_size(), dtype=np.intc)
@@ -284,12 +305,17 @@ cdef class MCTS:
             probs[bestA] = 1
             return probs
 
-    cpdef float value(self):
-        """Get the Q value of the current root node by looking at the max value of child nodes."""
+    cpdef float value(self, bint average=False):
+        """Get the Q value of the current root node in the range [0, 1] by looking at the max value of child nodes (or averaging them)."""
         cdef float value = -1
         cdef Node c
-        for c in self._root._children:
-            if c.q > value:
-                value = c.q
         
+        if average:
+            value = sum([c.q for c in self._root._children]) / len(self._root._children)
+        
+        else:
+            for c in self._root._children:
+                if c.q > value:
+                    value = c.q
+            
         return (value + 1) / 2
