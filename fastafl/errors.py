@@ -1,4 +1,8 @@
-class LoadError(Exception):
+class TaflError(Exception):
+    pass
+
+
+class LoadError(TaflError):
     pass
 
 
@@ -6,5 +10,9 @@ class InvalidBoardState(LoadError):
     pass
 
 
-class InvalidMoveError(Exception):
+class InvalidMoveError(TaflError):
+    pass
+
+
+class PositionError(TaflError):
     pass

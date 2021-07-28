@@ -10,6 +10,8 @@ hnefatafl = """50022222005
 00000200000
 50022222005"""
 
+hnefatafl_args = (hnefatafl, False)
+
 brandubh = """5002005
 0002000
 0001000
@@ -17,3 +19,5 @@ brandubh = """5002005
 0001000
 0002000
 5002005"""
+
+brandubh_args = (brandubh, True)
