@@ -12,10 +12,9 @@ from fastafl import variants, errors
 import warnings
 import numpy as np
 cimport numpy as np
+from fastafl cimport cengine
 
 np.import_array()
-DTYPE = np.int32
-ctypedef np.int32_t DTYPE_t
 
 
 # region Tiles and pieces
@@ -32,9 +31,7 @@ cdef public int tile_escape = 5
 
 
 cdef class Square:
-    cdef public int x
-    cdef public int y
-    def __init__(self, int x, int y):
+    def __init__(self, Py_ssize_t x, Py_ssize_t y):
         self.x, self.y = x, y
 
     cpdef tuple _get_tuple(self):
@@ -75,19 +72,15 @@ cdef class Square:
 
 
 # region Constants
-cdef tuple ALL_PIECES = (piece_attacker, piece_defender, piece_king, piece_king_on_throne, piece_king_on_escape)
 cdef tuple KING_ON_TILE = (piece_king_on_throne, piece_king_on_escape)
+cdef tuple KING_VALUES = (piece_king, *KING_ON_TILE)
+cdef tuple ALL_PIECES = (piece_attacker, piece_defender, *KING_VALUES)
 cdef tuple BASE_PIECES = tuple(piece for piece in ALL_PIECES if piece not in KING_ON_TILE)
 cdef tuple ALL_TILES = (tile_normal, tile_throne, tile_escape)
 cdef tuple ALL_SQUARES = (*ALL_PIECES, *ALL_TILES)
-cdef tuple KING_VALUES = (piece_king, *KING_ON_TILE)
 cdef tuple ATTACKERS = (piece_attacker, *KING_VALUES)
 cdef tuple SPECIAL_TILES = (tile_throne, tile_escape)
 cdef tuple KING_CAPTURE = (piece_defender, *SPECIAL_TILES)
-
-ctypedef fused RawState_T:
-    str
-    np.ndarray
 
 cdef tuple DIRECTIONS = ((0, 1), (1, 0), (0, -1), (-1, 0))
 
@@ -95,7 +88,7 @@ cdef tuple DIRECTIONS = ((0, 1), (1, 0), (0, -1), (-1, 0))
 
 
 # region Helper functions
-cpdef _raise_invalid_board(RawState_T board_data):
+cpdef void _raise_invalid_board(cengine.RawState_T board_data):
     raise errors.InvalidBoardState(f'An attempt was made to load an invalid board state. Got data:\n{board_data}')
 
 # endregion
@@ -103,28 +96,20 @@ cpdef _raise_invalid_board(RawState_T board_data):
 
 # region Board class
 cdef class Board:
-    cdef public np.ndarray _state
-    cdef public int width
-    cdef public int height
-    cdef public bint king_two_sided_capture
-    cdef public int num_turns
-    cdef public bint _king_captured
-    cdef public bint _king_escaped
-
     # region Load board
-    def __init__(self, str state = variants.hnefatafl, bint king_two_sided_capture=False):
+    def __init__(self, str state=variants.hnefatafl, bint king_two_sided_capture=False):
         self._load_str(state)
         self.king_two_sided_capture = king_two_sided_capture
         self.num_turns = 0
         self._king_captured = False
         self._king_escaped = False
 
-    cpdef _load_str_inner(self, str data):
-        self._state = np.array([[int(tile) for tile in row] for row in data.splitlines()], dtype=np.int32)
+    cpdef void _load_str_inner(self, str data):
+        self._state = np.array([[int(tile) for tile in row] for row in data.splitlines()], dtype=np.uint8)
         self.height = self._state.shape[0]
         self.width = self._state.shape[1]
 
-    cpdef _load_str(self, str data, bint _skip_error_check=False):
+    cpdef void _load_str(self, str data, bint _skip_error_check=False):
         if _skip_error_check:
             self._load_str_inner(data)
             return
@@ -202,40 +187,21 @@ cdef class Board:
         if self[square] == tile_normal:
             return True
 
-    cpdef list _get_piece_squares(self, condition):
-        cdef int x, y
-        cdef Square square
-        cdef list squares = []
-
-        for x in range(self.width):
-            for y in range(self.height):
-                square = Square(x, y)
-                if condition(self[square]):
-                    squares.append(square)
-
-        return squares
-
-    cpdef list __iter_pieces(self, tuple pieces, int piece_type):
-        cdef Square piece
-        cdef int x, y
+    cpdef list __iter_pieces(self, tuple pieces, int piece_type=0):
         cdef list ret = [piece for piece in pieces if self[piece] in ALL_PIECES]
+        cdef tuple piece_types = ()
+        cdef tuple pos
 
-        if piece_type != piece_king:
-            for x in range(self.width):
-                for y in range(self.height):
-                    piece = Square(x, y)
-                    if self[piece] == piece_type:
-                        ret.append(piece)
+        if piece_type != 0:
+            piece_types = self._get_team(piece_type)
         elif not pieces:
-            for x in range(self.width):
-                for y in range(self.height):
-                    piece = Square(x, y)
-                    if self[piece] not in ALL_TILES:
-                        ret.append(piece)
+            piece_types = ALL_PIECES
+        if piece_types:
+            ret.extend(self.get_squares(piece_types))
 
         return ret
 
-    cpdef list legal_moves(self, tuple pieces = (), int piece_type=piece_king):
+    cpdef list legal_moves(self, tuple pieces=(), int piece_type=0):
         cdef Square piece_square, cur_square
         cdef bint is_king
         cdef tuple move_dir
@@ -251,18 +217,41 @@ cdef class Board:
 
         return legals
 
-    cpdef bint has_legal_moves(self, tuple pieces = (), int piece_type=piece_king):
-        try:
-            next(iter(self.legal_moves(pieces=pieces, piece_type=piece_type)))
-        except StopIteration:
-            return False
-        else:
-            return True
+    cpdef bint __has_legals_check(self, Square piece_square):
+        cdef bint is_king = self[piece_square] in KING_VALUES
+        cdef tuple move_dir
+
+        for move_dir in DIRECTIONS:
+            if self._is_valid(self._relative_square(piece_square, move_dir), is_king):
+                return True
+        return False
+
+    cpdef bint has_legal_moves(self, tuple pieces=(), int piece_type=0):
+        cdef Square piece_square
+        cdef tuple piece_types = ()
+
+        if pieces:
+            for piece_square in pieces:
+                if self[piece_square] in ALL_PIECES and self.__has_legals_check(piece_square):
+                    return True
+
+        if piece_type != 0:
+            piece_types = self._get_team(piece_type)
+        elif not pieces:
+            piece_types = ALL_PIECES
+
+        if piece_types:
+            for pos in zip(*np.where(self.get_mask(piece_types))):
+                piece_square = Square(*pos)
+                if self.__has_legals_check(piece_square):
+                    return True
+
+        return False
 
     # endregion
 
     # region Win state
-    cdef bint king_escaped(self):
+    cpdef bint king_escaped(self):
         if self._king_escaped:
             return True
         return (self._state == piece_king_on_escape).any()
@@ -275,25 +264,25 @@ cdef class Board:
             return True
         elif self.king_two_sided_capture:
             return False
-        cdef np.ndarray[np.uint8_t, ndim=2, cast=True] king_mask = (self._state == piece_king) \
-            | (self._state == piece_king_on_throne) | (self._state == piece_king_on_escape)
 
-        return any([all(map(self.__king_captured_lambda, self._surrounding_squares(Square(*reversed(pos)))))
-                    for pos in zip(*np.where(king_mask))])
+        return any([all(map(self.__king_captured_lambda, self._surrounding_squares(square)))
+                    for square in self.get_squares(KING_VALUES)])
 
-    cpdef get_winner(self):
+    cpdef int get_winner(self):
         if self.king_escaped() or not self.has_legal_moves(piece_type=piece_defender):
             return piece_attacker
         elif self.king_captured() or not self.has_legal_moves(piece_type=piece_attacker):
             return piece_defender
+        else:
+            return 0
 
     cpdef bint is_game_over(self):
-        return self.get_winner() is not None
+        return self.get_winner() != 0
 
     # endregion
 
     # region Capture and move logic
-    cpdef _check_capture(self, Square moved_piece):
+    cpdef void _check_capture(self, Square moved_piece):
         cdef int piece_val = self[moved_piece]
         cdef tuple friendly = ATTACKERS if piece_val in ATTACKERS else (piece_val,)
         cdef int enemy = 3 - piece_val if piece_val != piece_king else piece_defender
@@ -301,21 +290,21 @@ cdef class Board:
         cdef tuple check_dir
         cdef Square enemy_square, friendly_square
         cdef int value
-        cdef bint enemy_is_king
+        cdef bint do_capture
 
         for check_dir in DIRECTIONS:
             enemy_square = self._relative_square(moved_piece, check_dir)
             if not self._in_bounds(enemy_square): continue
 
             value = self[enemy_square]
-            enemy_is_king = value in KING_VALUES
-            if value == enemy or (self.king_two_sided_capture and enemy_is_king):
+            do_capture = (self.king_two_sided_capture and value == piece_king)
+            if value == enemy or do_capture:
                 friendly_square = self._relative_square(enemy_square, check_dir)
                 if not self._in_bounds(friendly_square): continue
 
                 value = self[friendly_square]
                 if value in friendly or value in SPECIAL_TILES:
-                    if self.king_two_sided_capture and enemy_is_king:
+                    if do_capture:
                         self._king_captured = True
                     else:
                         self._set_square(enemy_square, tile_normal)
@@ -347,8 +336,8 @@ cdef class Board:
         else:
             return False, True
 
-    cpdef _check_surround(self, Square moved_piece):
-        cdef tuple enemy = ATTACKERS if self[moved_piece] == piece_defender else (piece_defender,)
+    cpdef void _check_surround(self, Square moved_piece):
+        cdef tuple enemy = self._get_team(self[moved_piece], enemy=True)
         cdef tuple start_squares = self.__next_check_squares(enemy, self._surrounding_squares(moved_piece))
         if not start_squares: return
 
@@ -368,15 +357,23 @@ cdef class Board:
 
                 checked_squares.extend(to_capture)
 
-    cpdef move(self, Square source, Square dest, bint _check_valid=True, bint _check_win=True):
+    cpdef void move(self, Square source, Square dest, bint check_turn=True, bint _check_valid=True, bint _check_win=True):
         cdef int source_val = self[source]
         if _check_valid:
+            if source_val not in ALL_PIECES:
+                raise errors.InvalidMoveError(f'The source square has no piece on it. Found value: {source_val}')
+
+            if check_turn:
+                colour = self._team_colour(source_val)
+                if colour != self.to_play():
+                    raise errors.InvalidMoveError(f"It is not player {colour}'s turn.")
+
             if (source, dest) not in self.legal_moves((source,)):
                 raise errors.InvalidMoveError(
                     f'The move {source}->{dest} is illegal. Source value: {source_val}, dest. value: {self[dest]}'
                 )
 
-        self[dest] = self.remove_piece(source, raise_no_piece=_check_valid)
+        self.add_piece(dest, self.remove_piece(source, raise_no_piece=_check_valid), _check_valid=_check_valid)
         self._check_capture(dest)
         self._check_surround(dest)
         self.num_turns += 1
@@ -385,14 +382,19 @@ cdef class Board:
             self._king_escaped = self.king_escaped()
             self._king_captured = self.king_captured()
 
-    cpdef Board move_(self, Square source, Square dest, bint _check_valid=True, bint _check_win=True):
+    cpdef Board move_(self, Square source, Square dest, bint check_turn=True, bint _check_valid=True, bint _check_win=True):
         cdef Board b = self.copy()
-        b.move(source, dest, _check_valid, _check_win)
+        b.move(source, dest, check_turn, _check_valid, _check_win)
         return b
 
-    cpdef random_move(self):
+    cpdef void random_move(self):
         import random
         self.move(*random.choice(list(self.legal_moves(piece_type=self.to_play()))), _check_valid=False)
+
+    cpdef Board random_move_(self):
+        cdef Board b = self.copy()
+        b.random_move()
+        return b
 
     # endregion
 
@@ -412,16 +414,33 @@ cdef class Board:
 
         return squares
 
-    cpdef _set_square(self, Square square, int new_val):
+    cpdef void _set_square(self, Square square, int new_val):
         self[square] = new_val
 
-    cpdef add_piece(self, Square square, int piece, bint replace=True):
-        if piece not in BASE_PIECES:
+    cpdef tuple _get_team(self, int piece_type, bint enemy=False):
+        cdef bint use_attackers
+        if enemy:
+            use_attackers = piece_type == piece_defender
+        else:
+            use_attackers = piece_type == piece_attacker
+
+        return ATTACKERS if use_attackers else (piece_defender,)
+
+    cpdef int _team_colour(self, int piece_type):
+        if piece_type in ATTACKERS:
+            return piece_attacker
+        elif piece_type == piece_defender:
+            return piece_type
+        else:
+            return 0
+
+    cpdef void add_piece(self, Square square, int piece, bint replace=False, _check_valid=True):
+        if _check_valid and piece not in BASE_PIECES:
             raise ValueError(f'{piece} is not a valid piece to add to the board.')
 
         cdef int dest_value = self[square]
 
-        if not replace and dest_value in ALL_PIECES:
+        if _check_valid and not replace and dest_value in ALL_PIECES:
             raise errors.PositionError(
                 f"Can't set square {square} to piece {piece} because argument replace is set to False, and the square "
                 f"contains the piece {dest_value}."
@@ -452,6 +471,16 @@ cdef class Board:
 
         self[square] = new_value
         return piece
+
+    cpdef np.ndarray get_mask(self, tuple piece_types):
+        cdef np.ndarray[np.uint8_t, ndim=2, cast=True] mask = self._state == piece_types[0]
+        cdef int piece
+        for piece in piece_types[1:]:
+            mask |= (self._state == piece)
+        return mask
+
+    cpdef list get_squares(self, tuple piece_types):
+        return [Square(*reversed(pos)) for pos in zip(*np.where(self.get_mask(piece_types)))]
 
     cpdef int to_play(self):
         return 2 - self.num_turns % 2

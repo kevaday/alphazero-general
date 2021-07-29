@@ -1,4 +1,5 @@
 # cython: language_level=3
+import numpy as np
 
 from alphazero.Game import GameState
 from alphazero.GenericPlayers import BasePlayer
@@ -117,7 +118,7 @@ class Arena:
     def __sorted_players(self):
         return iter(sorted(self.players, key=lambda p: p.index))
 
-    def play_game(self, verbose=False, _player_to_index: list = None) -> Tuple[GameState, Tuple[bool, ...]]:
+    def play_game(self, verbose=False, _player_to_index: list = None) -> Tuple[GameState, np.ndarray]:
         """
         Executes one episode of a game.
 
@@ -149,7 +150,7 @@ class Arena:
             
             winstate = state.win_state()
 
-            if any(winstate):
+            if winstate.any():
                 if verbose:
                     print(f'Game over: Turn {state.turns}, Result {winstate}')
                     self.display(state)

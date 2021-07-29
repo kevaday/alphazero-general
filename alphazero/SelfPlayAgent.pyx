@@ -158,7 +158,7 @@ class SelfPlayAgent(mp.Process):
                 self.next_reset[i] = self.games[i].turns + self.args.mctsResetThreshold
 
             winstate = self.games[i].win_state()
-            if any(winstate):
+            if winstate.any():
                 self.result_queue.put((self.games[i].clone(), winstate, self.id))
                 lock = self.games_played.get_lock()
                 lock.acquire()

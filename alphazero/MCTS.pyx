@@ -10,8 +10,12 @@
 from libc.math cimport sqrt
 
 import numpy as np
+cimport numpy as np
 from alphazero.utils import dotdict
-# import cython
+
+
+DTYPE = np.float32
+ctypedef np.float32_t DTYPE_t
 
 NOISE_ALPHA_RATIO = 10.83
 _DRAW_VALUE = 0.5
@@ -47,7 +51,7 @@ cdef class Node:
     cdef public int a
     cdef public float cpuct
     cdef public int _players
-    cdef public tuple e
+    cdef public np.ndarray e
     cdef public float q
     cdef public float v
     cdef public int n
@@ -59,7 +63,7 @@ cdef class Node:
         self.a = action
         self.cpuct = cpuct
         self._players = num_players
-        self.e = tuple([False]*(num_players + 1))
+        self.e = np.zeros(num_players + 1, dtype=np.uint8)
         self.q = 0
         self.v = 0
         self.n = 0
@@ -69,7 +73,7 @@ cdef class Node:
     # def __reduce__(self):
     #    return rebuild_node, ([n.__reduce__() for n in self._children], self.a, self.cpuct, self._players, self.e, self.q, self.n, self.p, self.player)
 
-    cdef add_children(self, int[:] v):
+    cdef void add_children(self, np.ndarray v):
         cdef Py_ssize_t a
         for a in range(len(v)):
             if v[a] == 1:
@@ -77,7 +81,7 @@ cdef class Node:
         # shuffle children
         np.random.shuffle(self._children)
 
-    cdef update_policy(self, float[:] pi):
+    cdef void update_policy(self, float[:] pi):
         cdef Node c
         for c in self._children:
             c.p = pi[c.a]
@@ -125,6 +129,7 @@ cdef class MCTS:
     cdef public int depth
     cdef public int max_depth
     cdef public int _discount_max_depth
+
     def __init__(self, args: dotdict):
         self.root_noise_frac = args.root_noise_frac
         self.root_temp = args.root_policy_temp
@@ -139,7 +144,7 @@ cdef class MCTS:
         self.max_depth = 0
         self._discount_max_depth = 0
 
-    cpdef reset(self):
+    cpdef void reset(self):
         self._root = Node(-1, self._cpuct, self._num_players)
         self._curnode = self._root
         self._path = []
@@ -150,7 +155,7 @@ cdef class MCTS:
     # def __reduce__(self):
     #   return rebuild_mcts, (self._root._players, self.cpuct, self._root, self._curnode, self._path)
 
-    cpdef search(self, gs, nn, int sims, bint add_root_noise, bint add_root_temp):
+    cpdef void search(self, object gs, object nn, int sims, bint add_root_noise, bint add_root_temp):
         cdef float[:] v
         cdef float[:] p
         self.max_depth = 0
@@ -160,7 +165,7 @@ cdef class MCTS:
             p, v = nn(leaf.observation())
             self.process_results(leaf, v, p, add_root_noise, add_root_temp)
 
-    cpdef raw_search(self, gs, int sims, bint add_root_noise, bint add_root_temp):
+    cpdef void raw_search(self, object gs, int sims, bint add_root_noise, bint add_root_temp):
         cdef Py_ssize_t value_size = gs.num_players() + 1
         cdef Py_ssize_t policy_size = gs.action_size()
         cdef float[:] v = np.full((value_size,), 1 / value_size, dtype=np.float32)
@@ -171,7 +176,7 @@ cdef class MCTS:
             leaf = self.find_leaf(gs)
             self.process_results(leaf, v, p, add_root_noise, add_root_temp)
 
-    cpdef update_root(self, gs, int a):
+    cpdef void update_root(self, object gs, int a):
         if not self._root._children:
             self._root.add_children(gs.valid_moves())
 
@@ -183,7 +188,7 @@ cdef class MCTS:
 
         raise ValueError(f'Invalid action encountered while updating root: {c.a}')
 
-    cpdef add_root_noise(self):
+    cpdef void _add_root_noise(self):
         cdef int num_valid_moves = len(self._root._children)
         cdef float[:] noise = np.array(np.random.dirichlet(
             [NOISE_ALPHA_RATIO / num_valid_moves] * num_valid_moves
@@ -194,12 +199,12 @@ cdef class MCTS:
         for n, c in zip(noise, self._root._children):
             c.p = c.p * (1 - self.root_noise_frac) + self.root_noise_frac * n
 
-    cpdef find_leaf(self, game_state):
+    cpdef object find_leaf(self, object game_state):
         self.depth = 0
         self._curnode = self._root
         gs = game_state.clone()
 
-        while self._curnode.n > 0 and not any(self._curnode.e):
+        while self._curnode.n > 0 and not self._curnode.e.any():
             self._path.append(self._curnode)
             self._curnode = self._curnode.best_child(self.fpu_reduction)
             gs.play_action(self._curnode.a)
@@ -216,11 +221,11 @@ cdef class MCTS:
 
         return gs
 
-    cpdef process_results(self, gs, float[:] value, float[:] pi, bint add_root_noise, bint add_root_temp):
+    cpdef void process_results(self, object gs, float[:] value, float[:] pi, bint add_root_noise, bint add_root_temp):
         cdef float[:] valids
         cdef Node c
         
-        if any(self._curnode.e):
+        if self._curnode.e.any():
             value = np.array(self._curnode.e, dtype=np.float32)
         else:
             # reconstruct valid moves based on children of current node
@@ -241,7 +246,7 @@ cdef class MCTS:
 
                 self._curnode.update_policy(pi)
                 if add_root_noise:
-                    self.add_root_noise()
+                    self._add_root_noise()
             else:
                 self._curnode.update_policy(pi)
 
@@ -278,16 +283,18 @@ cdef class MCTS:
     cpdef float _get_value(self, float[:] value, Py_ssize_t player, Py_ssize_t num_players):
         return value[player] + value[num_players] / num_players
 
-    cpdef int[:] counts(self, gs):
-        cdef int[:] counts = np.zeros(gs.action_size(), dtype=np.intc)
+    cpdef int[:] counts(self, object gs):
+        cdef int[:] counts = np.zeros(gs.action_size(), dtype=np.int32)
         cdef Node c
 
         for c in self._root._children:
             counts[c.a] = c.n
         return np.asarray(counts)
 
-    cpdef probs(self, gs, temp=1):
-        counts = self.counts(gs)
+    cpdef np.ndarray probs(self, object gs, float temp=1.0):
+        cdef float[:] counts = np.array(self.counts(gs), dtype=np.float32)
+        cdef float[:] probs
+        cdef Py_ssize_t bestA
 
         if temp == 0:
             bestA = np.argmax(counts)
@@ -296,9 +303,9 @@ cdef class MCTS:
             return probs
 
         try:
-            probs = (counts / np.sum(counts)) ** (1.0/temp)
+            probs = (counts / np.sum(counts)) ** (1.0 / temp)
             probs /= np.sum(probs)
-            return probs
+            return np.asarray(probs)
         except OverflowError:
             bestA = np.argmax(counts)
             probs = np.zeros_like(counts)

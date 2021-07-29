@@ -11,13 +11,13 @@ use this script to play any two agents against each other, or play manually with
 any agent.
 """
 if __name__ == '__main__':
-    from alphazero.envs.tafl.tafl import TaflGame as Game, display
-    from alphazero.envs.tafl.train import args
+    from alphazero.envs.tafl.fastafl import TaflGame as Game, display
+    from alphazero.envs.tafl.train_fastafl import args
     #from alphazero.envs.tafl.train_brandubh import args as args2
     from alphazero.envs.tafl.players import HumanTaflPlayer
     import random
 
-    args.numMCTSSims = 2000
+    #args.numMCTSSims = 2000
     #args.arena_batch_size = 64
     #args.temp_scaling_fn = lambda x,y,z:0.25
     #args2.temp_scaling_fn = args.temp_scaling_fn
@@ -26,14 +26,14 @@ if __name__ == '__main__':
 
     # nnet players
     nn1 = NNet(Game, args)
-    nn1.load_checkpoint('./checkpoint/' + args.run_name, 'iteration-0005.pkl')
+    nn1.load_checkpoint('./checkpoint/' + args.run_name, 'iteration-0002.pkl')
     #nn2 = NNet(Game, args)
     #nn2.load_checkpoint('./checkpoint/brandubh2', 'iteration-0112.pkl')
     #player1 = nn1.process
     #player2 = nn2.process
 
-    player1 = MCTSPlayer(Game, nn1, args=args, verbose=True)
-    player2 = MCTSPlayer(Game, nn1, args=args, verbose=True)
+    player1 = MCTSPlayer(Game, nn1, args=args, verbose=False)
+    player2 = MCTSPlayer(Game, nn1, args=args, verbose=False)
     #player2 = RandomPlayer()
     #player2 = GreedyTaflPlayer()
     #player2 = RandomPlayer()
