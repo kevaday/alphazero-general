@@ -72,7 +72,7 @@ class Connect4Game(GameState):
                 index = 1
             result[index] = True
 
-        return tuple(result)
+        return np.array(result, dtype=np.uint8)
 
     def observation(self):
         if MULTI_PLANE_OBSERVATION:

@@ -29,7 +29,7 @@ cpdef Board _get_board():
     return Board(*GAME_VARIANT)
 
 
-cdef tuple GAME_VARIANT = variants.brandubh_args
+cdef tuple GAME_VARIANT = variants.hnefatafl_args
 cdef int NUM_PLAYERS = 2
 cdef int NUM_STACKED_OBSERVATIONS = 1
 cdef int NUM_BASE_CHANNELS = 5
@@ -39,7 +39,7 @@ cdef Board b = _get_board()
 cdef int ACTION_SIZE = b.width * b.height * (b.width + b.height - 2)
 cdef tuple OBS_SIZE = (NUM_CHANNELS, b.width, b.height)
 
-cdef int DRAW_MOVE_COUNT = 100
+cdef int DRAW_MOVE_COUNT = 512
 
 
 cpdef tuple get_move(Board board, int action):
@@ -220,7 +220,7 @@ cdef class TaflGame:#(GameState):
 
         for i in range(1, 5):
             for flip in (False, True):
-                state = np.rot90(np.array(self._board._state), i)
+                state = np.rot90(np.array(self._board._state, dtype=np.float32), i)
                 if flip:
                     state = np.fliplr(state)
 

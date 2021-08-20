@@ -10,6 +10,9 @@ import os
 import importlib
 import random
 
+import pyximport, numpy
+pyximport.install(setup_args={'include_dirs': numpy.get_include()})
+
 
 class AlphaZeroBot(BaseBot):
     def __init__(self, player: BasePlayer, game_variant=variants.hnefatafl, use_mcts=True, use_default_args=True,
@@ -28,8 +31,8 @@ class AlphaZeroBot(BaseBot):
         if load: self.load_model(MODEL_PATH)
 
     def reset(self):
-        from alphazero.envs.tafl.train import args
-        from alphazero.envs.tafl.tafl import TaflGame
+        from alphazero.envs.tafl.train_fastafl import args
+        from alphazero.envs.tafl.brandubh import TaflGame
         self._args = self._args if self._args is not None else args
         self._game = TaflGame()
         if self._model_player and self.use_mcts:
@@ -37,7 +40,7 @@ class AlphaZeroBot(BaseBot):
     
     def update(self, board: BaseBoard, move: Move):
         if self.use_mcts:
-            from alphazero.envs.tafl.tafl import get_action
+            from alphazero.envs.tafl.brandubh import get_action
 
             self._game._board = board
             self._game._player = 2 - board.to_play().value
@@ -59,7 +62,71 @@ class AlphaZeroBot(BaseBot):
     def get_move(self, board: BaseBoard) -> Move or None:
         self.result = None
 
-        from alphazero.envs.tafl.tafl import get_move
+        from alphazero.envs.tafl.brandubh import get_move
+
+        self._game._board = board
+        self._game._player = 2 - board.to_play().value
+        self._game._turns = board.num_turns
+        action = self._model_player(self._game)
+        move = get_move(board, action)
+
+        self._result_lock.acquire()
+        self.result = move
+        self._result_lock.release()
+
+        return move
+
+
+class AlphaZeroFastaflBot(BaseBot):
+    def __init__(self, player: BasePlayer, game_variant=variants.hnefatafl, use_mcts=True, use_default_args=True,
+                 load=True, args=None, *a, **k):
+        super().__init__(player)
+        self.use_mcts = use_mcts
+        self.use_default_args = use_default_args
+        self.game_variant = game_variant
+        self._game = None
+        self._args = args
+        self._model_player = None
+        self.__a = a
+        self.__k = k
+        self.result = None
+        self._result_lock = Lock()
+        if load: self.load_model(MODEL_PATH)
+
+    def reset(self):
+        from alphazero.envs.tafl.train_fastafl import args
+        from alphazero.envs.tafl.fastafl import TaflGame
+        self._args = self._args if self._args is not None else args
+        self._game = TaflGame()
+        if self._model_player and self.use_mcts:
+            self._model_player.mcts.reset()
+    
+    def update(self, board: BaseBoard, move: Move):
+        if self.use_mcts:
+            from alphazero.envs.tafl.fastafl import get_action
+            from fastafl
+
+            self._game._board = board
+            self._game._player = 2 - board.to_play().value
+            self._game._turns = board.num_turns
+            self._model_player.update(self._game, get_action(board, move))
+
+    def load_model(self, model_path: str):
+        from alphazero.NNetWrapper import NNetWrapper
+
+        self.reset()
+        nn = NNetWrapper(type(self._game), self._args)
+        nn.load_checkpoint('.', model_path)
+
+        self.__k['args'] = self._args if not self.use_default_args else None
+        if self.__k.get('verbose'): print('Loading model with args:', self.__k['args'])
+        cls = MCTSPlayer if self.use_mcts else NNPlayer
+        self._model_player = cls(type(self._game), nn, *self.__a, **self.__k)
+
+    def get_move(self, board: BaseBoard) -> Move or None:
+        self.result = None
+
+        from alphazero.envs.tafl.fastafl import get_move
 
         self._game._board = board
         self._game._player = 2 - board.to_play().value

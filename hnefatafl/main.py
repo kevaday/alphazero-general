@@ -29,7 +29,7 @@ class SinglePlayerWindow(Ui_FrmLocalGame):
         self.bot_white = True#bool(random.randint(0, 1))
         super().__init__(game=game, playable=True, is_white=not self.bot_white)
 
-        from alphazero.envs.tafl.train import args
+        from alphazero.envs.tafl.train_fastafl import args
         args.numMCTSSims = 2000
         #args.temp_scaling_fn = lambda x, y, z: 0.25
         args.add_root_noise = args.add_root_temp = False
@@ -453,7 +453,7 @@ class MainWindow(Ui_MainWindow):
 
     def btn_single_clicked(self):
         try:
-            self.game_window = SinglePlayerWindow(Game(Board(variants.hnefatafl)))
+            self.game_window = SinglePlayerWindow(Game(Board(variants.brandubh)))
         except IOError as e:
             show_dialog(f'Failed to start game: {e}', self, 'Error', error=True)
         else:

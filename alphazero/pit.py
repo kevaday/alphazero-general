@@ -1,5 +1,6 @@
-import pyximport
-pyximport.install()
+import numpy, pyximport
+
+pyximport.install(setup_args={'include_dirs': numpy.get_include()})
 
 from alphazero.Arena import Arena
 from alphazero.GenericPlayers import *
@@ -11,14 +12,12 @@ use this script to play any two agents against each other, or play manually with
 any agent.
 """
 if __name__ == '__main__':
-    from alphazero.envs.tafl.tafl import TaflGame as Game
-    from alphazero.envs.tafl.players import GreedyTaflPlayer
-    from alphazero.envs.tafl.train import args
+    from alphazero.envs.gobang.GobangGame import GobangGame as Game
+    #from alphazero.envs.tafl.players import GreedyTaflPlayer
+    from alphazero.envs.gobang.train import args
 
-    args.numMCTSSims = 100
-    args.tempThreshold = 100
-    args.temp = 0.1
-    args.arena_batch_size = 64
+    args.numMCTSSims = 800
+    #args.arena_batch_size = 64
 
     # all players
     # rp = RandomPlayer(g).play

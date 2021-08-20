@@ -97,9 +97,12 @@ cpdef void _raise_invalid_board(cengine.RawState_T board_data):
 # region Board class
 cdef class Board:
     # region Load board
-    def __init__(self, str state=variants.hnefatafl, bint king_two_sided_capture=False):
+    def __init__(self, str state=variants.hnefatafl, bint king_two_sided_capture=False, bint move_over_throne=True, bint king_can_enter_throne=False):
         self._load_str(state)
         self.king_two_sided_capture = king_two_sided_capture
+        self.move_over_throne = move_over_throne
+        self.king_can_enter_throne = king_can_enter_throne
+
         self.num_turns = 0
         self._king_captured = False
         self._king_escaped = False
@@ -178,14 +181,18 @@ cdef class Board:
         # No piece can go on a square out of bounds
         if not self._in_bounds(square):
             return False
+        
+        # Allowed if the square is empty
+        if self[square] == tile_normal:
+            return True
 
         # Only king can go on escape square
         if self[square] == tile_escape:
             return is_king
 
-        # Allowed if the square is empty
-        if self[square] == tile_normal:
-            return True
+        # Can re-enter the throne if rule is set
+        if self.king_can_enter_throne and self[square] == tile_throne:
+            return is_king
 
     cpdef list __iter_pieces(self, tuple pieces, int piece_type=0):
         cdef list ret = [piece for piece in pieces if self[piece] in ALL_PIECES]
@@ -203,7 +210,7 @@ cdef class Board:
 
     cpdef list legal_moves(self, tuple pieces=(), int piece_type=0):
         cdef Square piece_square, cur_square
-        cdef bint is_king
+        cdef bint is_king, is_throne
         cdef tuple move_dir
         cdef list legals = []
 
@@ -211,9 +218,12 @@ cdef class Board:
             is_king = self[piece_square] in KING_VALUES
             for move_dir in DIRECTIONS:
                 cur_square = self._relative_square(piece_square, move_dir)
-                while self._is_valid(cur_square, is_king):
-                    legals.append((piece_square, cur_square))
+                is_throne = self.move_over_throne and self._in_bounds(cur_square) and self[cur_square] == tile_throne
+                while self._is_valid(cur_square, is_king) or is_throne:
+                    if not is_throne or self.king_can_enter_throne:
+                        legals.append((piece_square, cur_square))
                     cur_square = self._relative_square(cur_square, move_dir)
+                    is_throne = self.move_over_throne and self._in_bounds(cur_square) and self[cur_square] == tile_throne
 
         return legals
 

@@ -28,7 +28,12 @@ DEFAULT_ARGS = dotdict({
     'arena_batch_size': 32,
     'train_steps_per_iteration': 64,
     'train_sample_ratio': 2,
-    'autoTrainSteps': False,
+    'averageTrainSteps': True,
+    'autoTrainSteps': False,  # Calculates the average number of samples in the training window
+                              # if averageTrainSteps set to True, otherwise uses latest
+                              # number of samples, and does train_sample_ratio * avg_num_steps 
+                              # or last_num_train_steps // train_batch_size
+                              # training steps.
     'train_on_past_data': False,
     'past_data_chunk_size': 25,
     'past_data_run_name': 'boardgame',
@@ -37,11 +42,12 @@ DEFAULT_ARGS = dotdict({
     'minTrainHistoryWindow': 4,
     'maxTrainHistoryWindow': 20,
     'trainHistoryIncrementIters': 2,
-    'max_moves': 128,
+    'max_moves': 128,  # Make sure to change this to a correct value for your env,
+                       # as the default temperature scaling is based on the max game length.
     'num_players': 2,
     'min_discount': 1,
     'fpu_reduction': 0.2,
-    'num_stacked_observations': 8,
+    'num_stacked_observations': 8,  # Does nothing yet
     'numWarmupIters': 2,  # Iterations where games are played randomly, 0 for none
     'skipSelfPlayIters': None,
     'selfPlayModelIter': None,
@@ -61,7 +67,7 @@ DEFAULT_ARGS = dotdict({
     'baselineTester': RandomPlayer,
     'arenaCompareBaseline': 16,
     'arenaCompare': 128,
-    'arenaTemp': 0.1,
+    'arenaTemp': 0.25,
     'arenaMCTS': True,
     'arenaBatched': True,
     'baselineCompareFreq': 1,
@@ -93,15 +99,15 @@ DEFAULT_ARGS = dotdict({
         # 'verbose': False
     }),
 
-    'lr': 1e-3,
+    'lr': 1e-2,
     'optimizer': torch.optim.SGD,
     'optimizer_args': dotdict({
         'momentum': 0.9,
         'weight_decay': 1e-4
     }),
 
-    'num_channels': 64,
-    'depth': 8,
+    'num_channels': 32,
+    'depth': 4,
     'value_head_channels': 1,
     'policy_head_channels': 2,
     'value_dense_layers': [64],
@@ -200,10 +206,10 @@ class Coach:
                 self.train(model_iter)
 
                 if not self.warmup and self.args.compareWithBaseline and (model_iter - 1) % self.args.baselineCompareFreq == 0:
-                    if model_iter == 1:
-                        print(
-                            'Note: Comparisons against the baseline do not use monte carlo tree search.'
-                        )
+                    #if model_iter == 1:
+                    #    print(
+                    #        'Note: Comparisons against the baseline do not use monte carlo tree search.'
+                    #    )
                     self.compareToBaseline(model_iter)
 
                 if not self.warmup and self.args.compareWithPast and (model_iter - 1) % self.args.pastCompareFreq == 0:
@@ -348,7 +354,8 @@ class Coach:
         self.games_played = mp.Value('i', 0)
 
     def train(self, iteration):
-        last_num_samples = 0
+        num_train_steps = 0
+        sample_counter = 0
         
         def add_tensor_dataset(train_iter, tensor_dataset_list, run_name=self.args.run_name):
             filename = os.path.join(
@@ -366,15 +373,25 @@ class Coach:
             tensor_dataset_list.append(
                 TensorDataset(data_tensor, policy_tensor, value_tensor)
             )
-            last_num_samples = data_tensor.size(0)
+            nonlocal num_train_steps
+            if self.args.averageTrainSteps:
+                nonlocal sample_counter
+                num_train_steps += data_tensor.size(0)
+                sample_counter += 1
+            else:
+                num_train_steps = data_tensor.size(0)
 
         def train_data(tensor_dataset_list, train_on_all=False):
             dataset = ConcatDataset(tensor_dataset_list)
             dataloader = DataLoader(dataset, batch_size=self.args.train_batch_size, shuffle=True,
                                     num_workers=self.args.workers, pin_memory=True)
+            
+            if self.args.averageTrainSteps:
+                nonlocal num_train_steps
+                num_train_steps //= sample_counter
 
             train_steps = len(dataset) // self.args.train_batch_size \
-               if train_on_all else (last_num_samples // self.args.batch_size
+               if train_on_all else (num_train_steps // self.args.train_batch_size
                    if self.args.autoTrainSteps else self.args.train_steps_per_iteration)
 
             result = self.train_net.train(dataloader, train_steps)

@@ -269,11 +269,11 @@ cdef class MCTS:
                 # don't discount value in the rare case that it is a draw (0.5)
                 discount = 1
             # scale value to the range [-1, 1]
-            v = 2 * v * discount - 1
+            # v = 2 * v * discount - 1
 
-            self._curnode.q = (self._curnode.q * self._curnode.n + v) / (self._curnode.n + 1)
+            self._curnode.q = (self._curnode.q * self._curnode.n + v * discount) / (self._curnode.n + 1)
             if self._curnode.n == 0:
-                self._curnode.v = self._get_value(value, self._curnode.player, num_players) * 2 - 1
+                self._curnode.v = v  # self._get_value(value, self._curnode.player, num_players) * 2 - 1
             self._curnode.n += 1
             self._curnode = parent
             i += 1
@@ -293,7 +293,7 @@ cdef class MCTS:
 
     cpdef np.ndarray probs(self, object gs, float temp=1.0):
         cdef float[:] counts = np.array(self.counts(gs), dtype=np.float32)
-        cdef float[:] probs
+        cdef np.ndarray[dtype=np.float32_t, ndim=1] probs
         cdef Py_ssize_t bestA
 
         if temp == 0:
@@ -305,7 +305,7 @@ cdef class MCTS:
         try:
             probs = (counts / np.sum(counts)) ** (1.0 / temp)
             probs /= np.sum(probs)
-            return np.asarray(probs)
+            return probs
         except OverflowError:
             bestA = np.argmax(counts)
             probs = np.zeros_like(counts)
@@ -314,15 +314,15 @@ cdef class MCTS:
 
     cpdef float value(self, bint average=False):
         """Get the Q value of the current root node in the range [0, 1] by looking at the max value of child nodes (or averaging them)."""
-        cdef float value = -1
+        cdef float value = -float('inf')
         cdef Node c
         
         if average:
-            value = sum([c.q for c in self._root._children]) / len(self._root._children)
+            value = sum([c.q for c in self._root._children if c.n > 0]) / len(self._root._children)
         
         else:
             for c in self._root._children:
-                if c.q > value:
+                if c.q > value and c.n > 0:
                     value = c.q
             
-        return (value + 1) / 2
+        return value

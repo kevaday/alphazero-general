@@ -30,6 +30,8 @@ cdef class Board:
     cdef public Py_ssize_t width
     cdef public Py_ssize_t height
     cdef public bint king_two_sided_capture
+    cdef public bint move_over_throne
+    cdef public bint king_can_enter_throne
     cdef public int num_turns
     cdef public bint _king_captured
     cdef public bint _king_escaped

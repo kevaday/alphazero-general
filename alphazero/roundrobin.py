@@ -12,8 +12,8 @@ import pprint
 import choix
 
 if __name__ == '__main__':
-    from alphazero.envs.connect4.Connect4Game import Connect4Game as Game
-    from alphazero.envs.connect4.train import args
+    from alphazero.envs.tafl.fastafl import TaflGame as Game
+    from alphazero.envs.tafl.train_fastafl import args
 
     print('Args:')
     pprint.pprint(args)
@@ -64,10 +64,10 @@ if __name__ == '__main__':
                     p1 = cls(nnet1, args=args)
                     p2 = cls(nnet2, args=args)
             else:
-                p1 = (MCTSPlayer if args.arenaMCTS else NNPlayer)(nnet1, args=args)
-                p2 = RandomPlayer()
+                p1 = nnet1.process  #(MCTSPlayer if args.arenaMCTS else NNPlayer)(Game, nnet1, args=args)
+                p2 = RawMCTSPlayer(Game, args).process
 
-            arena = Arena([p1, p2], Game, use_batched_mcts=(args.arenaBatched and file2.name != 'random'), args=args)
+            arena = Arena([p1, p2], Game, use_batched_mcts=args.arenaBatched, args=args)
             wins, draws, winrates = arena.play_games(args.arenaCompare)
             win_matrix[i, j] = wins[0] + 0.5 * draws
             win_matrix[j, i] = wins[1] + 0.5 * draws

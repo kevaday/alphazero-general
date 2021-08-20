@@ -139,7 +139,7 @@ class SelfPlayAgent(mp.Process):
 
     def playMoves(self):
         for i in range(self.batch_size):
-            self.temps[i] = self.args.temp_scaling_fn(self.temps[i], self.games[i].turns, self.args.max_moves)
+            self.temps[i] = self.args.temp_scaling_fn(self.temps[i], self.games[i].turns, self.args.max_moves) if not self._is_arena else self.args.arenaTemp
             policy = self._mcts(i).probs(self.games[i], self.temps[i])
             action = np.random.choice(self.games[i].action_size(), p=policy)
             if not self.fast and not self._is_arena:
