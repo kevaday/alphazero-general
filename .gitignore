@@ -1,4 +1,6 @@
 alphazero/__pycache__
+alphazero/pytorch_classification/__pycache__
+alphazero/pytorch_classification/utils/__pycache__
 boardgame/__pycache__
 hnefatafl/__pycache__
 fastafl/__pycache__
@@ -6,4 +8,3 @@ fastafl/__pycache__
 checkpoint
 data
 runs
-alphazero/envs/othello/special
