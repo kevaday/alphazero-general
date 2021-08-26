@@ -1,6 +1,9 @@
 alphazero/__pycache__
 alphazero/pytorch_classification/__pycache__
 alphazero/pytorch_classification/utils/__pycache__
+AlphaZeroGUI/__pycache__
+AlphaZeroGUI/*.ui
+game2dboard/__pycache__
 boardgame/__pycache__
 hnefatafl/__pycache__
 fastafl/__pycache__

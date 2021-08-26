@@ -12,7 +12,7 @@ ACTION_SIZE = BOARD_SIZE ** 2
 OBSERVATION_SIZE = (NUM_CHANNELS, BOARD_SIZE, BOARD_SIZE)
 
 
-class TicTacToeGame(GameState):
+class Game(GameState):
     def __init__(self, _board=None):
         super().__init__(_board or self._get_board())
 
@@ -20,7 +20,7 @@ class TicTacToeGame(GameState):
     def _get_board():
         return Board(BOARD_SIZE)
 
-    def __eq__(self, other: 'TicTacToeGame') -> bool:
+    def __eq__(self, other: 'Game') -> bool:
         return (
             self._board.pieces == other._board.pieces
             and self._board.n == other._board.n
@@ -28,8 +28,8 @@ class TicTacToeGame(GameState):
             and self.turns == other.turns
         )
 
-    def clone(self) -> 'TicTacToeGame':
-        g = TicTacToeGame()
+    def clone(self) -> 'Game':
+        g = Game()
         g._board.pieces = np.copy(self._board.pieces)
         g._player = self._player
         g._turns = self.turns

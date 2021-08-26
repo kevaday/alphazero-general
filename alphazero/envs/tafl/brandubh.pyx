@@ -109,11 +109,11 @@ def _get_observation(board: Board, const_max_player: int, const_max_turns: int, 
     return np.array(obs, dtype=np.float32)
 
 
-class TaflGame(GameState):
+class Game(GameState):
     def __init__(self, _board=None):
         super().__init__(_board or _get_board())
 
-    def __eq__(self, other: 'TaflGame') -> bool:
+    def __eq__(self, other: 'Game') -> bool:
         return self.__dict__ == other.__dict__
 
     @staticmethod
@@ -125,7 +125,7 @@ class TaflGame(GameState):
         return (1, -1)[2 - player.value]
 
     def clone(self) -> 'GameState':
-        g = TaflGame(self._board.copy(store_past_states=self._board._store_past_states))
+        g = Game(self._board.copy(store_past_states=self._board._store_past_states))
         g._player = self._player
         g._turns = self.turns
         return g
@@ -248,7 +248,7 @@ class TaflGame(GameState):
         return self.player * (1000 * result + black_pieces - white_pieces)
 
 
-def display(state: TaflGame, action: int = None):
+def display(state: Game, action: int = None):
     print(f'Action: {action}, Move: {get_move(state._board, action)}')
     print(state)
 
@@ -256,7 +256,7 @@ def display(state: TaflGame, action: int = None):
 def test_repeat(n):
     global GAME_VARIANT
     GAME_VARIANT = variants.hnefatafl
-    g = TaflGame()
+    g = Game()
     # g.board[0][0].piece = Piece(PieceType(3), 0, 0, 0)
     board = _get_board()
     for _ in range(n):

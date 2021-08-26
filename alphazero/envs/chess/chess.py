@@ -39,7 +39,7 @@ def _int2base(x, base, length):
     return list(map(lambda x: int(x, base), digits))
 
 
-class ChessGame(GameState):
+class Game(GameState):
     def __init__(self):
         super().__init__(self._get_board())
 

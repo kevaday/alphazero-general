@@ -1,7 +1,7 @@
 from alphazero.NNetArchitecture import NNetArchitecture
 from alphazero.pytorch_classification.utils import Bar, AverageMeter
 from alphazero.Game import GameState
-from time import time
+from threading import Event
 from abc import ABC, abstractmethod
 from typing import Tuple
 
@@ -10,6 +10,7 @@ import torch.optim as optim
 import numpy as np
 import torch
 import pickle
+import time
 import os
 
 
@@ -23,8 +24,9 @@ class BaseWrapper(ABC):
     See othello/NNet.py for an example implementation.
     """
 
-    def __init__(self, game_cls: GameState):
-        pass
+    def __init__(self, game_cls: GameState, args):
+        self.stop_train = Event()
+        self.pause_train = Event()
 
     def __call__(self, *args, **kwargs):
         return self.predict(*args, **kwargs)
@@ -79,6 +81,7 @@ class BaseWrapper(ABC):
 
 class NNetWrapper(BaseWrapper):
     def __init__(self, game_cls, args):
+        super().__init__(game_cls, args)
         self.nnet = NNetArchitecture(game_cls, args)
         self.action_size = game_cls.action_size()
         self.optimizer = args.optimizer(self.nnet.parameters(), lr=args.lr, **args.optimizer_args)
@@ -91,8 +94,17 @@ class NNetWrapper(BaseWrapper):
             self.nnet.cuda()
 
         self.args = args
+        self.current_step = 0
+        self.total_steps = 0
+        self.l_pi = 0
+        self.l_v = 0
+        self.l_total = 0
+        self.step_time = 0
+        self.elapsed_time = 0
+        self.eta = 0
 
     def train(self, batches, train_steps):
+        self.total_steps = train_steps
         self.nnet.train()
 
         data_time = AverageMeter()
@@ -104,14 +116,17 @@ class NNetWrapper(BaseWrapper):
             print(f'Current LR: {self.optimizer.param_groups[0]["lr"]}')
 
         bar = Bar(f'Training Net', max=train_steps)
-        current_step = 0
-        while current_step < train_steps:
+        self.current_step = 0
+        while self.current_step < train_steps and not self.stop_train.is_set():
             for batch_idx, batch in enumerate(batches):
-                if current_step == train_steps:
+                if self.current_step == train_steps or self.stop_train.is_set():
                     break
 
-                start = time()
-                current_step += 1
+                while self.pause_train.is_set():
+                    time.sleep(.1)
+
+                start = time.time()
+                self.current_step += 1
                 boards, target_pis, target_vs = batch
 
                 # predict
@@ -123,7 +138,7 @@ class NNetWrapper(BaseWrapper):
                     )
 
                 # measure data loading time
-                data_time.update(time() - start)
+                data_time.update(time.time() - start)
 
                 # compute output
                 out_pi, out_v = self.nnet(boards)
@@ -140,11 +155,18 @@ class NNetWrapper(BaseWrapper):
                 self.optimizer.step()
 
                 # measure elapsed time
-                batch_time.update(time() - start)
+                batch_time.update(time.time() - start)
+
+                self.l_pi = pi_losses.avg
+                self.l_v = v_losses.avg
+                self.l_total = self.l_pi + self.l_v
+                self.step_time = data_time.avg + batch_time.avg
+                self.elapsed_time = bar.elapsed_td
+                self.eta = bar.eta_td
 
                 # plot progress
                 bar.suffix = '({step}/{size}) Data: {data:.3f}s | Batch: {bt:.3f}s | Total: {total:} | ETA: {eta:} | Loss_pi: {lpi:.4f} | Loss_v: {lv:.3f}'.format(
-                    step=current_step,
+                    step=self.current_step,
                     size=train_steps,
                     data=data_time.avg,
                     bt=batch_time.avg,

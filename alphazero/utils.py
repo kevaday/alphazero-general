@@ -1,6 +1,3 @@
-import alphazero.MCTS
-
-
 class dotdict(dict):
     def __getattr__(self, name):
         if name.startswith('__'):

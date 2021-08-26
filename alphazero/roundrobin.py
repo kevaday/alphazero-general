@@ -12,7 +12,7 @@ import pprint
 import choix
 
 if __name__ == '__main__':
-    from alphazero.envs.tafl.fastafl import TaflGame as Game
+    from alphazero.envs.tafl.fastafl import Game as Game
     from alphazero.envs.tafl.train_fastafl import args
 
     print('Args:')

@@ -32,9 +32,9 @@ class AlphaZeroBot(BaseBot):
 
     def reset(self):
         from alphazero.envs.tafl.train_fastafl import args
-        from alphazero.envs.tafl.brandubh import TaflGame
+        from alphazero.envs.tafl.brandubh import Game
         self._args = self._args if self._args is not None else args
-        self._game = TaflGame()
+        self._game = Game()
         if self._model_player and self.use_mcts:
             self._model_player.mcts.reset()
     
@@ -95,9 +95,9 @@ class AlphaZeroFastaflBot(BaseBot):
 
     def reset(self):
         from alphazero.envs.tafl.train_fastafl import args
-        from alphazero.envs.tafl.fastafl import TaflGame
+        from alphazero.envs.tafl.fastafl import Game
         self._args = self._args if self._args is not None else args
-        self._game = TaflGame()
+        self._game = Game()
         if self._model_player and self.use_mcts:
             self._model_player.mcts.reset()
     

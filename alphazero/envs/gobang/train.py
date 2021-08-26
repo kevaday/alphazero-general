@@ -3,7 +3,7 @@ pyximport.install(setup_args={'include_dirs': numpy.get_include()})
 
 from alphazero.Coach import Coach, get_args
 from alphazero.NNetWrapper import NNetWrapper as nn
-from alphazero.envs.gobang.GobangGame import GobangGame as Game
+from alphazero.envs.gobang.gobang import Game
 from alphazero.GenericPlayers import RawMCTSPlayer
 #from alphazero.envs.gobang.GobangPlayers import GreedyGobangPlayer
 

@@ -17,7 +17,7 @@ MULTI_PLANE_OBSERVATION = True
 NUM_CHANNELS = 4 if MULTI_PLANE_OBSERVATION else 1
 
 
-class Connect4Game(GameState):
+class Game(GameState):
     """
     Connect4 Game class implementing the alpha-zero-general Game interface.
     """
@@ -31,11 +31,11 @@ class Connect4Game(GameState):
     def __hash__(self) -> int:
         return hash(self._board.pieces.tobytes() + bytes([self.turns]) + bytes([self._player]))
 
-    def __eq__(self, other: 'Connect4Game') -> bool:
+    def __eq__(self, other: 'Game') -> bool:
         return self._board.pieces == other._board.pieces and self._player == other._player and self.turns == other.turns
 
-    def clone(self) -> 'Connect4Game':
-        game = Connect4Game()
+    def clone(self) -> 'Game':
+        game = Game()
         game._board.pieces = np.copy(np.asarray(self._board.pieces))
         game._player = self._player
         game._turns = self.turns

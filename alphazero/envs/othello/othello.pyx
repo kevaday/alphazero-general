@@ -13,7 +13,7 @@ ACTION_SIZE = BOARD_SIZE ** 2
 OBSERVATION_SIZE = (NUM_CHANNELS, BOARD_SIZE, BOARD_SIZE)
 
 
-class OthelloGame(GameState):
+class Game(GameState):
     def __init__(self, _board=None):
         super().__init__(_board or self._get_board())
 
@@ -34,9 +34,9 @@ class OthelloGame(GameState):
     def _get_board(*args, **kwargs):
         return Board(BOARD_SIZE, *args, **kwargs)
 
-    def clone(self) -> 'OthelloGame':
+    def clone(self) -> 'Game':
         board = self._get_board(_pieces=np.copy(np.asarray(self._board.pieces)))
-        game = OthelloGame(_board=board)
+        game = Game(_board=board)
         game._player = self._player
         game._turns = self.turns
         return game

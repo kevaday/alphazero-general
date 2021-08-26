@@ -4,7 +4,7 @@ from torch import multiprocessing as mp
 
 from alphazero.Coach import Coach, get_args
 from alphazero.NNetWrapper import NNetWrapper as nn
-from alphazero.envs.connect4.Connect4Game import Connect4Game as Game
+from alphazero.envs.connect4.connect4 import Game
 from alphazero.GenericPlayers import RawMCTSPlayer
 from alphazero.utils import dotdict
 
@@ -20,7 +20,7 @@ args = get_args(dotdict({
     'gamesPerIteration': 2048 * mp.cpu_count(),
     'symmetricSamples': True,
     'skipSelfPlayIters': None,
-    'selfPlayModelIter': 35,
+    'selfPlayModelIter': None,
     'numMCTSSims': 200,
     'numFastSims': 40,
     'probFastSim': 0.75,

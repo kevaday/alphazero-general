@@ -92,10 +92,12 @@ cdef class Node:
     cdef Node best_child(self, float fpu_reduction):
         cdef float seen_policy = sum([c.p for c in self._children if c.n > 0])
         cdef float fpu_value = self.v - fpu_reduction * sqrt(seen_policy)
-        child = None
         cdef float curBest = -float('inf')
         cdef float sqrtN = sqrt(self.n)
+        cdef float uct
         cdef Node c
+        child = None
+
         for c in self._children:
             uct = c.uct(sqrtN, fpu_value)
             if uct > curBest:
@@ -268,12 +270,13 @@ cdef class MCTS:
             elif v == _DRAW_VALUE:
                 # don't discount value in the rare case that it is a draw (0.5)
                 discount = 1
+
             # scale value to the range [-1, 1]
             # v = 2 * v * discount - 1
 
             self._curnode.q = (self._curnode.q * self._curnode.n + v * discount) / (self._curnode.n + 1)
             if self._curnode.n == 0:
-                self._curnode.v = v  # self._get_value(value, self._curnode.player, num_players) * 2 - 1
+                self._curnode.v = self._get_value(value, self._curnode.player, num_players) #  * 2 - 1
             self._curnode.n += 1
             self._curnode = parent
             i += 1
@@ -294,12 +297,12 @@ cdef class MCTS:
     cpdef np.ndarray probs(self, object gs, float temp=1.0):
         cdef float[:] counts = np.array(self.counts(gs), dtype=np.float32)
         cdef np.ndarray[dtype=np.float32_t, ndim=1] probs
-        cdef Py_ssize_t bestA
+        cdef Py_ssize_t best_action
 
         if temp == 0:
-            bestA = np.argmax(counts)
+            best_action = np.argmax(counts)
             probs = np.zeros_like(counts)
-            probs[bestA] = 1
+            probs[best_action] = 1
             return probs
 
         try:
@@ -307,9 +310,9 @@ cdef class MCTS:
             probs /= np.sum(probs)
             return probs
         except OverflowError:
-            bestA = np.argmax(counts)
+            best_action = np.argmax(counts)
             probs = np.zeros_like(counts)
-            probs[bestA] = 1
+            probs[best_action] = 1
             return probs
 
     cpdef float value(self, bint average=False):

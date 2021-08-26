@@ -7,7 +7,7 @@ from collections import namedtuple
 import textwrap
 import numpy as np
 
-from .Connect4Game import Connect4Game
+from .Connect4Game import Game
 
 # Tuple of (Board, Player, Game) to simplify testing.
 BPGTuple = namedtuple('BPGTuple', 'board player game')
@@ -15,7 +15,7 @@ BPGTuple = namedtuple('BPGTuple', 'board player game')
 
 def init_board_from_moves(moves, height=None, width=None):
     """Returns a BPGTuple based on series of specified moved."""
-    game = Connect4Game(height=height, width=width)
+    game = Game(height=height, width=width)
     board, player = game.getInitBoard(), 1
     for move in moves:
         board, player = game.getNextState(board, player, move)
@@ -24,7 +24,7 @@ def init_board_from_moves(moves, height=None, width=None):
 
 def init_board_from_array(board, player):
     """Returns a BPGTuple based on series of specified moved."""
-    game = Connect4Game(height=len(board), width=len(board[0]))
+    game = Game(height=len(board), width=len(board[0]))
     return BPGTuple(board, player, game)
 
 

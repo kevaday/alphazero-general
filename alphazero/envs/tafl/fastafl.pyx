@@ -118,7 +118,7 @@ cpdef np.ndarray _get_observation(Board board, int const_max_players, int const_
     return np.array(obs, dtype=np.float32)
 
 
-cdef class TaflGame:#(GameState):
+cdef class Game:#(GameState):
     cdef public Board _board
     cdef public int _player
     cdef public int _turns
@@ -128,7 +128,7 @@ cdef class TaflGame:#(GameState):
         self._player = 0
         self._turns = 0
 
-    def __eq__(self, other: 'TaflGame') -> bool:
+    def __eq__(self, other: 'Game') -> bool:
         return self.__dict__ == other.__dict__
 
     def __str__(self):
@@ -146,8 +146,8 @@ cdef class TaflGame:#(GameState):
     cdef int _get_player_int(int player):
         return (1, -1)[2 - player]
 
-    cpdef TaflGame clone(self):
-        cdef TaflGame g = TaflGame(self._board.copy())
+    cpdef Game clone(self):
+        cdef Game g = Game(self._board.copy())
         g._player = self._player
         g._turns = self.turns
         return g
@@ -165,7 +165,7 @@ cdef class TaflGame:#(GameState):
         return OBS_SIZE
     
     cpdef int _next_player(self, int player, int turns=1):
-        return (player + turns) % TaflGame.num_players()
+        return (player + turns) % Game.num_players()
 
     cpdef void _update_turn(self):
         """Should be called at the end of play_action"""
@@ -216,7 +216,7 @@ cdef class TaflGame:#(GameState):
         cdef np.ndarray[np.float32_t, ndim=2] state
         cdef np.ndarray[np.float32_t, ndim=1] new_pi
         cdef Board new_b
-        cdef TaflGame new_state
+        cdef Game new_state
 
         for i in range(1, 5):
             for flip in (False, True):
@@ -263,6 +263,6 @@ cdef class TaflGame:#(GameState):
     """
 
 
-cpdef void display(TaflGame state, int action=-1):
+cpdef void display(Game state, int action=-1):
     if action != -1: print(f'Action: {action}, Move: {get_move(state._board, action)}')
     print(state)

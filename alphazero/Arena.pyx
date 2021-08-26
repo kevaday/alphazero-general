@@ -9,11 +9,11 @@ from alphazero.utils import dotdict, get_game_results
 
 from typing import Callable, List, Tuple, Optional
 from queue import Empty
-from time import time
 
 import torch.multiprocessing as mp
 import torch
 import random
+import time
 
 
 class _PlayerWrapper:
@@ -83,6 +83,9 @@ class Arena:
         self.args = args.copy()
         self.draws = 0
         self.winrates = []
+        self._agents = []
+        self.stop_event = mp.Event()
+        self.pause_event = mp.Event()
 
     @property
     def players(self):
@@ -128,12 +131,18 @@ class Arena:
         """
         if verbose: assert self.display
 
+        self.stop_event = mp.Event()
+        self.pause_event = mp.Event()
+
         # Reset the state of the players if needed
         [p.reset() for p in self.players]
         state = self.game_cls()
         player_to_index = _player_to_index or list(range(state.num_players()))
 
-        while True:
+        while not self.stop_event.is_set():
+            while self.pause_event.is_set():
+                time.sleep(.1)
+
             action = self.players[player_to_index[state.player]](state)
 
             # valids = state.valid_moves()
@@ -157,6 +166,8 @@ class Arena:
 
                 return state, winstate
 
+        return state, state.win_state()
+
     def play_games(self, num, verbose=False) -> Tuple[List[int], int, List[int]]:
         """
         Plays num games in which the order of the players
@@ -168,9 +179,11 @@ class Arena:
             draws: number of draws that occurred in total
             winrates: the win rates for each player in self.players
         """
+        self.stop_event = mp.Event()
+        self.pause_event = mp.Event()
         eps_time = AverageMeter()
         bar = Bar('Arena.play_games', max=num)
-        end = time()
+        end = time.time()
         self.__reset_counts()
 
         players = list(range(self.game_cls.num_players()))
@@ -183,18 +196,19 @@ class Arena:
 
         if self.use_batched_mcts:
             self.args.gamesPerIteration = num
-            agents = []
+            self._agents = []
             policy_tensors = []
             value_tensors = []
             batch_ready = []
             batch_queues = []
-            stop_agents = mp.Event()
+            self.stop_event = mp.Event()
+            self.pause_event = mp.Event()
             ready_queue = mp.Queue()
             result_queue = mp.Queue()
             completed = mp.Value('i', 0)
             games_played = mp.Value('i', 0)
 
-            self.args.expertValueWeight.current = self.args.expertValueWeight.start
+            # self.args.expertValueWeight.current = self.args.expertValueWeight.start
             # if self.args.workers >= mp.cpu_count():
             #    self.args.workers = mp.cpu_count() - 1
 
@@ -216,16 +230,16 @@ class Arena:
                     policy_tensors[i].pin_memory()
                     value_tensors[i].pin_memory()
 
-                agents.append(
+                self._agents.append(
                     SelfPlayAgent(i, self.game_cls, ready_queue, batch_ready[i],
                                   input_tensors, policy_tensors[i], value_tensors[i], batch_queues[i],
-                                  result_queue, completed, games_played, stop_agents, self.args,
+                                  result_queue, completed, games_played, self.stop_event, self.pause_event, self.args,
                                   _is_arena=True, _player_order=players.copy()))
-                agents[i].daemon = True
-                agents[i].start()
+                self._agents[i].daemon = True
+                self._agents[i].start()
 
             sample_time = AverageMeter()
-            end = time()
+            end = time.time()
 
             n = 0
             while completed.value != self.args.workers:
@@ -250,14 +264,14 @@ class Arena:
 
                 size = games_played.value
                 if size > n:
-                    sample_time.update((time() - end) / (size - n), size - n)
+                    sample_time.update((time.time() - end) / (size - n), size - n)
                     n = size
-                    end = time()
+                    end = time.time()
 
                 wins, draws, _ = get_game_results(
                     result_queue,
                     self.game_cls,
-                    _get_index=lambda p, i: agents[i].player_to_index[p]
+                    _get_index=lambda p, i: self._agents[i].player_to_index[p]
                 )
                 for i, w in enumerate(wins):
                     self.players[i].wins += w
@@ -271,11 +285,30 @@ class Arena:
                     )
                 bar.goto(size)
 
-            stop_agents.set()
+            self.stop_event.set()
             bar.update()
             bar.finish()
 
-            for agent in agents:
+            for _ in range(ready_queue.qsize()):
+                try:
+                    ready_queue.get_nowait()
+                except Empty:
+                    break
+
+            for _ in range(result_queue.qsize()):
+                try:
+                    result_queue.get_nowait()
+                except Empty:
+                    break
+
+            for queue in batch_queues:
+                for _ in range(queue.qsize()):
+                    try:
+                        queue.get_nowait()
+                    except Empty:
+                        break
+
+            for agent in self._agents:
                 agent.join()
                 del policy_tensors[0]
                 del value_tensors[0]
@@ -283,11 +316,16 @@ class Arena:
 
         else:
             for eps in range(1, num + 1):
+                if self.stop_event.is_set():
+                    break
+
                 # Get a new lookup for self.players, randomized or reversed from original
                 get_player_order()
 
                 # Play a single game with the current player order
                 _, winstate = self.play_game(verbose, players)
+                if self.stop_event.is_set():
+                    break
 
                 # Bookkeeping + plot progress
                 for player, is_win in enumerate(winstate):
@@ -298,8 +336,8 @@ class Arena:
                             self.players[players[player]].add_win()
 
                 self.__update_winrates()
-                eps_time.update(time() - end)
-                end = time()
+                eps_time.update(time.time() - end)
+                end = time.time()
                 bar.suffix = '({eps}/{maxeps}) Winrates: {wr} | Eps Time: {et:.3f}s | Total: {total:} | ETA: {eta:}' \
                     .format(
                         eps=eps, maxeps=num, et=eps_time.avg, total=bar.elapsed_td, eta=bar.eta_td,

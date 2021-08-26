@@ -39,7 +39,7 @@ cpdef int get_action(tuple move, int n):
     return n * move[1] + move[0]
 
 
-cdef class GobangGame:#(GameState):
+cdef class Game:#(GameState):
     cdef public Board _board
     cdef public int _player
     cdef public int _turns
@@ -53,7 +53,7 @@ cdef class GobangGame:#(GameState):
     def _get_board(*args, **kwargs) -> Board:
         return Board(BOARD_SIZE, NUM_IN_ROW, *args, **kwargs)
 
-    def __eq__(self, other: 'GobangGame') -> bool:
+    def __eq__(self, other: 'Game') -> bool:
         return (
             self._board.pieces == other._board.pieces
             and self._board.n == other._board.n
@@ -62,9 +62,9 @@ cdef class GobangGame:#(GameState):
             and self.turns == other.turns
         )
 
-    cpdef GobangGame clone(self):
+    cpdef Game clone(self):
         cdef Board board = self._get_board(_pieces=np.copy(self._board.pieces))
-        cdef GobangGame g = GobangGame(_board=board)
+        cdef Game g = Game(_board=board)
         g._player = self._player
         g._turns = self.turns
         return g
@@ -148,7 +148,7 @@ cdef class GobangGame:#(GameState):
         cdef np.ndarray[np.int32_t, ndim=2] new_b
         cdef np.ndarray[np.float32_t, ndim=2] new_pi
         cdef list result = []
-        cdef GobangGame gs
+        cdef Game gs
         cdef Py_ssize_t i
         cdef bint j
 
@@ -167,7 +167,7 @@ cdef class GobangGame:#(GameState):
         return result
 
 
-cpdef void display(GobangGame gs, int action=-1):
+cpdef void display(Game gs, int action=-1):
     cdef np.ndarray[np.int32_t, ndim=2] board = gs._board.pieces
     cdef int n = board.shape[0]
     cdef Py_ssize_t y, x

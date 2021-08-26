@@ -26,12 +26,12 @@ from threading import Thread, Lock
 
 class SinglePlayerWindow(Ui_FrmLocalGame):
     def __init__(self, game):
-        self.bot_white = True#bool(random.randint(0, 1))
+        self.bot_white = bool(random.randint(0, 1))
         super().__init__(game=game, playable=True, is_white=not self.bot_white)
 
         from alphazero.envs.tafl.train_fastafl import args
         args.numMCTSSims = 2000
-        #args.temp_scaling_fn = lambda x, y, z: 0.25
+        args.temp_scaling_fn = lambda x, y, z: 0.25
         args.add_root_noise = args.add_root_temp = False
         args.cuda = False
         self.bot = AlphaZeroBot(

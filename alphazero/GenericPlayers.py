@@ -10,8 +10,9 @@ import torch
 
 
 class BasePlayer(ABC):
-    def __init__(self, game_cls: GameState = None):
+    def __init__(self, game_cls: GameState = None, args: dotdict = None):
         self.game_cls = game_cls
+        self.args = args
 
     def __call__(self, *args, **kwargs):
         return self.play(*args, **kwargs)
@@ -43,7 +44,7 @@ class RandomPlayer(BasePlayer):
 
 
 class NNPlayer(BasePlayer):
-    def __init__(self, game_cls: GameState, nn: NNetWrapper, args: dotdict):
+    def __init__(self, game_cls: GameState, args: dotdict, nn: NNetWrapper):
         super().__init__(game_cls)
         self.nn = nn
         self.args = args
@@ -78,7 +79,7 @@ class NNPlayer(BasePlayer):
 
 
 class MCTSPlayer(BasePlayer):
-    def __init__(self, game_cls: GameState, nn: NNetWrapper, args: dotdict, print_policy=False, verbose=False,
+    def __init__(self, game_cls: GameState, args: dotdict, nn: NNetWrapper, print_policy=False, verbose=False,
                  average_value=False, draw_mcts=False, draw_depth=2):
         super().__init__(game_cls)
         self.nn = nn
@@ -134,7 +135,7 @@ class MCTSPlayer(BasePlayer):
 
 class RawMCTSPlayer(MCTSPlayer):
     def __init__(self, game_cls: GameState, args: dotdict, verbose=False):
-        super().__init__(game_cls, None, args, verbose)
+        super().__init__(game_cls, args, None, verbose)
         self._POLICY_SIZE = self.game_cls.action_size()
         self._POLICY_FILL_VALUE = 1 / self._POLICY_SIZE
         self._VALUE_SIZE = self.game_cls.num_players() + 1

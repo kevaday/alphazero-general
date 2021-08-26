@@ -5,6 +5,7 @@ import numpy as np
 import torch
 import traceback
 import itertools
+import time
 
 from alphazero.MCTS import MCTS
 
@@ -12,7 +13,7 @@ from alphazero.MCTS import MCTS
 class SelfPlayAgent(mp.Process):
     def __init__(self, id, game_cls, ready_queue, batch_ready, batch_tensor, policy_tensor,
                  value_tensor, output_queue, result_queue, complete_count, games_played,
-                 stop_event: mp.Event, args, _is_arena=False, _is_warmup=False, _player_order=None):
+                 stop_event: mp.Event, pause_event: mp.Event(), args, _is_arena=False, _is_warmup=False, _player_order=None):
         super().__init__()
         self.id = id
         self.game_cls = game_cls
@@ -35,6 +36,7 @@ class SelfPlayAgent(mp.Process):
         self.games_played = games_played
         self.complete_count = complete_count
         self.stop_event = stop_event
+        self.pause_event = pause_event
         self.args = args
 
         self._is_arena = _is_arena
@@ -69,16 +71,24 @@ class SelfPlayAgent(mp.Process):
         else:
             return mcts
 
+    def _check_pause(self):
+        while self.pause_event.is_set():
+            time.sleep(.1)
+
     def run(self):
         try:
             np.random.seed()
             while not self.stop_event.is_set() and self.games_played.value < self.args.gamesPerIteration:
+                self._check_pause()
                 self.fast = np.random.random_sample() < self.args.probFastSim
                 sims = self.args.numFastSims if self.fast else self.args.numMCTSSims \
                     if not self._is_warmup else self.args.numWarmupSims
                 for _ in range(sims):
+                    if self.stop_event.is_set(): break
                     self.generateBatch()
+                    if self.stop_event.is_set(): break
                     self.processBatch()
+                if self.stop_event.is_set(): break
                 self.playMoves()
 
             with self.complete_count.get_lock():
@@ -95,6 +105,7 @@ class SelfPlayAgent(mp.Process):
             self.batch_indices = [[] for _ in range(self.game_cls.num_players())]
 
         for i in range(self.batch_size):
+            self._check_pause()
             state = self._mcts(i).find_leaf(self.games[i])
             if self._is_warmup:
                 self.policy_tensor[i].copy_(self._WARMUP_POLICY)
@@ -128,6 +139,7 @@ class SelfPlayAgent(mp.Process):
             self.batch_ready.clear()
 
         for i in range(self.batch_size):
+            self._check_pause()
             index = self.batch_indices[i] if self._is_arena else i
             self._mcts(i).process_results(
                 self.games[i],
@@ -139,6 +151,7 @@ class SelfPlayAgent(mp.Process):
 
     def playMoves(self):
         for i in range(self.batch_size):
+            self._check_pause()
             self.temps[i] = self.args.temp_scaling_fn(self.temps[i], self.games[i].turns, self.args.max_moves) if not self._is_arena else self.args.arenaTemp
             policy = self._mcts(i).probs(self.games[i], self.temps[i])
             action = np.random.choice(self.games[i].action_size(), p=policy)
@@ -167,12 +180,14 @@ class SelfPlayAgent(mp.Process):
                     lock.release()
                     if not self._is_arena:
                         for hist in self.histories[i]:
+                            self._check_pause()
                             if self.args.symmetricSamples:
                                 data = hist[0].symmetries(hist[1])
                             else:
                                 data = ((hist[0], hist[1]),)
 
                             for state, pi in data:
+                                self._check_pause()
                                 self.output_queue.put((
                                     state.observation(), pi, np.array(winstate, dtype=np.float32)
                                 ))

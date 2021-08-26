@@ -4,3 +4,4 @@ cython
 tensorboard
 tensorboardX
 choix
+PySide2
