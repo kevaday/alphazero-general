@@ -202,26 +202,26 @@ class MainWindow(Ui_FormMainMenu):
         if not self.coach: return
         self.lblTrainIteration.setText('Iteration: ' + str(self.coach.model_iter))
         self.lblTrainSelfPlayIter.setText('Self Play Iter: ' + str(self.coach.self_play_iter))
-        self.lblTrainNumGames.setText(
-            f'Games Played: {self.coach.games_played.value}/{self.train_args.gamesPerIteration}')
         self.lblTrainLossPolicy.setText('Policy Loss: ' + str(round(self.coach.train_net.l_pi, 3)))
         self.lblTrainLossValue.setText('Value Loss: ' + str(round(self.coach.train_net.l_v, 3)))
         self.lblTrainLossTotal.setText('Total Loss: ' + str(round(self.coach.train_net.l_total, 3)))
         if self.coach.state == TrainState.SELF_PLAY:
+            self.lblTrainNumGames.setText(
+                f'Games Played: {self.coach.games_played.value}/{self.train_args.gamesPerIteration}'
+            )
             self.lblTrainEpsTime.setText('Episode Time: ' + str(round(self.coach.sample_time, 3)
                                                                 if self.coach.sample_time else ' '))
             self.lblTrainIterTime.setText('Iteration Time: ' + str(self.coach.iter_time or ' '))
             self.lblTrainTimeRemaining.setText('Est. Time Remaining: ' + str(self.coach.eta or ' '))
         elif self.coach.state == TrainState.TRAIN:
+            self.lblTrainNumGames.setText(
+                f'Train Step: {self.coach.train_net.current_step}/{self.coach.train_net.total_steps}'
+            )
             self.lblTrainEpsTime.setText('Train Step Time: ' + str(round(self.coach.train_net.step_time, 3)))
             self.lblTrainIterTime.setText('Train Time: ' + str(self.coach.train_net.elapsed_time))
             self.lblTrainTimeRemaining.setText('Est. Time Remaining: ' + str(self.coach.train_net.eta))
 
     def start_train_clicked(self):
-        self.btnTrainControlStart.setEnabled(False)
-        self.btnTrainControlPause.setEnabled(True)
-        self.btnTrainControlStop.setEnabled(True)
-
         if self.coach and self.coach.pause_train.is_set() and not self.coach.stop_train.is_set():
             self.coach.pause_train.clear()
             return
@@ -230,6 +230,10 @@ class MainWindow(Ui_FormMainMenu):
         except (RuntimeError, IOError) as e:
             show_dialog('An error occurred loading the model: ' + str(e), self, error=True)
             return
+
+        self.btnTrainControlStart.setEnabled(False)
+        self.btnTrainControlPause.setEnabled(True)
+        self.btnTrainControlStop.setEnabled(True)
 
         self.btnTrainControlPause.clicked.connect(
             lambda: (self.coach.pause_train.set(), self.coach.arena.pause_event.set() if self.coach.arena else None)
@@ -249,12 +253,16 @@ class MainWindow(Ui_FormMainMenu):
         self.update_train_stats()
         if self.coach.state == TrainState.SELF_PLAY:
             self.progressIteration.setValue(self.coach.games_played.value / self.train_args.gamesPerIteration * 100)
-        elif self.coach.state == TrainState.TRAIN:
+        elif self.coach.state == TrainState.TRAIN and self.coach.train_net.total_steps:
             self.progressIteration.setValue(self.coach.train_net.current_step / self.coach.train_net.total_steps * 100)
+        else:
+            self.progressIteration.setValue(0)
         self.progressTotal.setValue(self.coach.model_iter / self.train_args.numIters * 100)
 
         if self.coach.stop_train.is_set():
             self.train_timer.stop()
+            self.train_thread.join()
+
             self.btnTrainControlStart.setEnabled(True)
             self.btnTrainControlPause.setEnabled(False)
             self.btnTrainControlStop.setEnabled(False)
@@ -262,15 +270,16 @@ class MainWindow(Ui_FormMainMenu):
             self.btnLoadTrainArgs.setEnabled(True)
             self.btnEditTrainArgs.setEnabled(True)
             self.btnLoadTrainEnv.setEnabled(True)
+
             self.progressIteration.setValue(0)
             self.progressTotal.setValue(0)
+            self.update_train_stats()
 
             self.train_args.selfPlayModelIter = self.coach.self_play_iter
             try:
                 self._save_args_from(self.train_args, ARGS_DIR / (self.train_args_name + '.json'))
             except (IOError, OSError) as e:
                 show_dialog('Unable to save args after training was stopped: ' + str(e), self, error=True)
-            self.train_thread.join()
 
         elif self.coach.pause_train.is_set():
             self.btnTrainControlStart.setEnabled(True)
@@ -404,7 +413,13 @@ class MainWindow(Ui_FormMainMenu):
             new_args = dotdict()
             for i in range(dialog.tableArgs.rowCount()):
                 key = dialog.tableArgs.verticalHeaderItem(i).text()
-                value = dialog.tableArgs.item(i, 0).text().replace('"', '')
+                str_value = dialog.tableArgs.item(i, 0).text()
+                try:
+                    value = eval(str_value)
+                except Exception as e:
+                    show_dialog(f'Invalid value encountered while saving args. '
+                                f'The argument "{key}" has invalid value "{str_value}". Error: {e}', self, error=True)
+                    return
                 new_args.update({key: value})
 
             text, ok = QInputDialog.getText(
