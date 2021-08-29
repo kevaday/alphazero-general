@@ -8,6 +8,7 @@ from alphazero.pytorch_classification.utils import Bar, AverageMeter
 from alphazero.utils import dotdict, get_game_results
 
 from typing import Callable, List, Tuple, Optional
+from enum import Enum
 from queue import Empty
 
 import torch.multiprocessing as mp
@@ -46,11 +47,31 @@ class _PlayerWrapper:
             self.winrate = (self.wins + 0.5 * draws) / num_games
 
 
+class ArenaState(Enum):
+    STANDBY = 0
+    INIT = 1
+    PLAY_GAMES = 2
+    SINGLE_GAME = 3
+
+
+def _set_state(state: ArenaState):
+    def decorator(func):
+        def wrapper(self, *args, **kwargs):
+            if not hasattr(self, 'state') or self.state == ArenaState.STANDBY:
+                self.state = state
+            ret = func(self, *args, **kwargs)
+            self.state = ArenaState.STANDBY
+            return ret
+        return wrapper
+    return decorator
+
+
 class Arena:
     """
     An Arena class where any game's agents can be pit against each other.
     """
 
+    @_set_state(ArenaState.INIT)
     def __init__(
             self,
             players: List[BasePlayer],
@@ -81,6 +102,12 @@ class Arena:
         self.use_batched_mcts = use_batched_mcts
         self.display = display
         self.args = args.copy()
+        self.games_played = 0
+        self.total_games = 0
+        self.eps_time = 0
+        self.total_time = 0
+        self.eta = 0
+        self.game_state = None
         self.draws = 0
         self.winrates = []
         self._agents = []
@@ -121,6 +148,7 @@ class Arena:
     def __sorted_players(self):
         return iter(sorted(self.players, key=lambda p: p.index))
 
+    @_set_state(ArenaState.SINGLE_GAME)
     def play_game(self, verbose=False, _player_to_index: list = None) -> Tuple[GameState, np.ndarray]:
         """
         Executes one episode of a game.
@@ -136,39 +164,40 @@ class Arena:
 
         # Reset the state of the players if needed
         [p.reset() for p in self.players]
-        state = self.game_cls()
-        player_to_index = _player_to_index or list(range(state.num_players()))
+        self.game_state = self.game_cls()
+        player_to_index = _player_to_index or list(range(self.game_state.num_players()))
 
         while not self.stop_event.is_set():
             while self.pause_event.is_set():
                 time.sleep(.1)
 
-            action = self.players[player_to_index[state.player]](state)
+            action = self.players[player_to_index[self.game_state.player]](self.game_state)
 
             # valids = state.valid_moves()
             # assert valids[action] > 0, ' '.join(map(str, [action, index, state.player, turns, valids]))
 
             if verbose:
-                print(f'Turn {state.turns}, Player {state.player}')
+                print(f'Turn {self.game_state.turns}, Player {self.game_state.player}')
 
-            [p.update(state, action) for p in self.players]
-            state.play_action(action)
+            [p.update(self.game_state, action) for p in self.players]
+            self.game_state.play_action(action)
 
             if verbose:
-                self.display(state, action)
+                self.display(self.game_state, action)
             
-            winstate = state.win_state()
+            winstate = self.game_state.win_state()
 
             if winstate.any():
                 if verbose:
-                    print(f'Game over: Turn {state.turns}, Result {winstate}')
-                    self.display(state)
+                    print(f'Game over: Turn {self.game_state.turns}, Result {winstate}')
+                    self.display(self.game_state)
 
-                return state, winstate
+                return self.game_state, winstate
 
-        return state, state.win_state()
+        return self.game_state, self.game_state.win_state()
 
-    def play_games(self, num, verbose=False) -> Tuple[List[int], int, List[int]]:
+    @_set_state(ArenaState.PLAY_GAMES)
+    def play_games(self, num: int, verbose=False, shuffle_players=True) -> Tuple[List[int], int, List[int]]:
         """
         Plays num games in which the order of the players
         is randomized for each game. The order is simply switched
@@ -179,6 +208,7 @@ class Arena:
             draws: number of draws that occurred in total
             winrates: the win rates for each player in self.players
         """
+        self.total_games = num
         self.stop_event = mp.Event()
         self.pause_event = mp.Event()
         eps_time = AverageMeter()
@@ -189,6 +219,7 @@ class Arena:
         players = list(range(self.game_cls.num_players()))
 
         def get_player_order():
+            if not shuffle_players: return
             if len(players) == 2:
                 players.reverse()
             else:
@@ -285,6 +316,11 @@ class Arena:
                     )
                 bar.goto(size)
 
+                self.games_played = size
+                self.eps_time = sample_time.avg
+                self.total_time = bar.elapsed_td
+                self.eta = bar.eta_td
+
             self.stop_event.set()
             bar.update()
             bar.finish()
@@ -344,6 +380,10 @@ class Arena:
                         wr=[round(w, 2) for w in self.winrates]
                     )
                 bar.next()
+                self.games_played = eps
+                self.eps_time = eps_time.avg
+                self.total_time = bar.elapsed_td
+                self.eta = bar.eta_td
 
             bar.update()
             bar.finish()

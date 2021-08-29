@@ -8,14 +8,15 @@ class ImageMap():
     # Singleton Pattern
     __shared_instance = None
 
-    def __init__(self, imgpath):
+    def __init__(self, cellsize, imgpath):
         self._dict = {}
+        self._cellsize = cellsize
         self._imgpath = imgpath
 
     @classmethod
-    def get_instance(cls, imgpath):                  # Single instance
+    def get_instance(cls, cellsize, imgpath):                  # Single instance
         if cls.__shared_instance is None:
-            cls.__shared_instance = cls(imgpath)
+            cls.__shared_instance = cls(cellsize, imgpath)
         return cls.__shared_instance
 
     def load(self, value):
@@ -25,7 +26,8 @@ class ImageMap():
             if not os.path.exists(fname):
                 return None
 
-        return PhotoImage(file=fname)
+        image = PhotoImage(file=fname)
+        return image.zoom(self._cellsize // 10).subsample(image.width() // 10)
 
     def __setitem__(self, key, value):
         value = str(value)

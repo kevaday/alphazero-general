@@ -10,15 +10,20 @@ import torch
 
 
 class BasePlayer(ABC):
-    def __init__(self, game_cls: GameState = None, args: dotdict = None):
+    def __init__(self, game_cls: GameState = None, args: dotdict = None, verbose: bool = False):
         self.game_cls = game_cls
         self.args = args
+        self.verbose = verbose
 
     def __call__(self, *args, **kwargs):
         return self.play(*args, **kwargs)
 
-    @property
-    def supports_process(self) -> bool:
+    @staticmethod
+    def supports_process() -> bool:
+        return False
+
+    @staticmethod
+    def requires_model() -> bool:
         return False
 
     def update(self, state: GameState, action: int) -> None:
@@ -49,6 +54,10 @@ class NNPlayer(BasePlayer):
         self.nn = nn
         self.args = args
         self.temp = args.startTemp
+
+    @staticmethod
+    def requires_model() -> bool:
+        return True
 
     def play(self, state) -> int:
         policy, _ = self.nn.predict(state.observation())
@@ -81,12 +90,10 @@ class NNPlayer(BasePlayer):
 class MCTSPlayer(BasePlayer):
     def __init__(self, game_cls: GameState, args: dotdict, nn: NNetWrapper, print_policy=False, verbose=False,
                  average_value=False, draw_mcts=False, draw_depth=2):
-        super().__init__(game_cls)
+        super().__init__(game_cls, args, verbose)
         self.nn = nn
-        self.args = args
         self.temp = args.startTemp
         self.print_policy = print_policy
-        self.verbose = verbose
         self.average_value = average_value
         self.draw_mcts = draw_mcts
         self.draw_depth = draw_depth
@@ -96,6 +103,10 @@ class MCTSPlayer(BasePlayer):
             value = self.mcts.value(self.average_value)
             self.__rel_val_split = value if value > 0.5 else 1 - value
             print('initial value:', self.__rel_val_split)
+
+    @staticmethod
+    def requires_model() -> bool:
+        return True
 
     def update(self, state: GameState, action: int) -> None:
         self.mcts.update_root(state, action)
@@ -140,9 +151,13 @@ class RawMCTSPlayer(MCTSPlayer):
         self._POLICY_FILL_VALUE = 1 / self._POLICY_SIZE
         self._VALUE_SIZE = self.game_cls.num_players() + 1
 
-    @property
-    def supports_process(self) -> bool:
+    @staticmethod
+    def supports_process() -> bool:
         return True
+
+    @staticmethod
+    def requires_model() -> bool:
+        return False
 
     def play(self, state) -> int:
         self.mcts.raw_search(state, self.args.numMCTSSims, self.args.add_root_noise, self.args.add_root_temp)

@@ -174,11 +174,11 @@ class Coach:
             self._load_model(self.self_play_net, self.self_play_iter)
         self.gating_counter = 0
         self.warmup = False
-        self.loss_pi = None
-        self.loss_v = None
-        self.sample_time = None
-        self.iter_time = None
-        self.eta = None
+        self.loss_pi = 0
+        self.loss_v = 0
+        self.sample_time = 0
+        self.iter_time = 0
+        self.eta = 0
         self.arena = None
         self.model_iter = self.args.startIter
         self.agents = []
@@ -564,7 +564,7 @@ class Coach:
     @_set_state(TrainState.COMPARE_BASELINE)
     def compareToBaseline(self, iteration):
         test_player = self.args.baselineTester(self.game_cls, self.args)
-        can_process = test_player.supports_process and self.args.arenaBatched
+        can_process = test_player.supports_process() and self.args.arenaBatched
 
         if can_process:
             test_player = test_player.process

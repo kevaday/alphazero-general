@@ -62,7 +62,7 @@ class Cell(object, metaclass=CellProperties):
             if self._image_id:
                 self._canvas.delete(self._image_id)    # clear current image
             if not v is None:
-                img = game2dboard.ImageMap.get_instance(self._imgpath)[v]
+                img = game2dboard.ImageMap.get_instance(self.size[0], self._imgpath)[v]
                 hc = self._x + Cell.width // 2     # horizontal center
                 vc = self._y + Cell.height // 2    # vertical center
                 # Show image|text @ canvas center

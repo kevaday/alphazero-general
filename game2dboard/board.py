@@ -278,7 +278,7 @@ class Board(UserList):
                 self._canvas.delete(self._bgimage_id)  # clear current image
             if not value is None:
                 self.grid_color = self.margin_color = self.cell_color = None
-                image = game2dboard.ImageMap.get_instance(self._imgpath).load(value)
+                image = game2dboard.ImageMap.get_instance(self.cell_size, self._imgpath).load(value)
                 if not image is None:
                     self._image_object = image
                     self._bgimage_id = self._canvas.create_image(  # Draw a image

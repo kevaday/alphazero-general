@@ -102,6 +102,11 @@ class NNetWrapper(BaseWrapper):
         self.step_time = 0
         self.elapsed_time = 0
         self.eta = 0
+        self.__loaded = False
+
+    @property
+    def loaded(self):
+        return self.__loaded
 
     def train(self, batches, train_steps):
         self.total_steps = train_steps
@@ -236,9 +241,13 @@ class NNetWrapper(BaseWrapper):
         filepath = os.path.join(folder, filename)
         if not os.path.exists(filepath):
             raise IOError("No model in path {}".format(filepath))
+
         checkpoint = torch.load(filepath)
         self.nnet.load_state_dict(checkpoint['state_dict'])
+
         if 'opt_state' in checkpoint:
             self.optimizer.load_state_dict(checkpoint['opt_state'])
         if 'sch_state' in checkpoint:
             self.scheduler.load_state_dict(checkpoint['sch_state'])
+
+        self.__loaded = True

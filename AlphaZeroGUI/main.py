@@ -1,11 +1,12 @@
 # This Python file uses the following encoding: utf-8
-
 from PySide2.QtWidgets import QApplication, QMessageBox, QInputDialog, QTableWidgetItem, QLineEdit
+from PySide2.QtGui import QFont
 from PySide2.QtCore import Qt, QTimer
-from AlphaZeroGUI import ARGS_DIR, ENVS_DIR, CALLABLE_PREFIX
+from AlphaZeroGUI import ARGS_DIR, ENVS_DIR, CALLABLE_PREFIX, PLAYERS_MODULE, GENERIC_PLAYERS_MODULE, ALPHAZERO_ROOT
 from AlphaZeroGUI._gui import Ui_FormMainMenu, Ui_DialogEditArgs, Ui_DialogCombo
 from alphazero.Coach import DEFAULT_ARGS, Coach, TrainState
-from alphazero.Arena import Arena
+from alphazero.Arena import Arena, ArenaState
+from alphazero.GenericPlayers import BasePlayer
 from alphazero.NNetWrapper import NNetWrapper
 from alphazero.utils import dotdict
 from tensorboard import program
@@ -22,7 +23,9 @@ import sys
 import os
 import json
 import errno
+import inspect
 import threading
+import concurrent.futures
 import webbrowser
 
 from pyximport import install as pyxinstall
@@ -97,6 +100,7 @@ class MainWindow(Ui_FormMainMenu):
         self.btnEditPitArgs.clicked.connect(lambda: self._show_args_editor(self.pit_args))
         self.btnLoadTrainEnv.clicked.connect(self._show_env_select_dialog)
         self.btnLoadPitEnv.clicked.connect(self._show_env_select_dialog)
+        self.btnEditPlayers.clicked.connect(self._show_player_editor)
         self.btnOpenTensorboard.clicked.connect(self.open_tensorboard)
         self.btnRemoveArgs.clicked.connect(self.remove_saved_args)
         self.btnRemoveArgsPit.clicked.connect(self.remove_saved_args)
@@ -111,37 +115,45 @@ class MainWindow(Ui_FormMainMenu):
         self.btnPitControlStop.setEnabled(False)
 
         self.train_args = dotdict()
-        self.pit_args = dotdict()
         self.train_timer = QTimer(self)
         self.train_timer.setInterval(500)
         self.train_timer.timeout.connect(self.train_update)
+        self.train_args_name = None
+        self.train_thread = None
+        self.coach = None
+
+        self.pit_args = dotdict()
         self.pit_timer = QTimer(self)
         self.pit_timer.setInterval(500)
         self.pit_timer.timeout.connect(self.pit_update)
-        self.train_args_name = None
         self.pit_args_name = None
-        self.train_env_name = None
-        self.pit_env_name = None
-        self.current_env = None
-        self.coach = None
+        self.pit_players = []
+        self.pit_models = dict()
+        self.pit_executor = None
+        self.pit_result = None
         self.arena = None
-        self.train_thread = None
-        self.pit_thread = None
+
+        self.train_ended_counter = 0
+        self.current_env = None
+        self.env_name = None
         self.tb_url = None
 
         self.update_frames()
         self.update_env_and_args()
-        self.update_train_stats()
+
+    @property
+    def is_train(self):
+        return self.btnTabTrain.isChecked()
 
     def update_frames(self):
-        self.frameTrain.setHidden(not self.btnTabTrain.isChecked())
-        self.framePit.setHidden(self.btnTabTrain.isChecked())
+        self.frameTrain.setHidden(not self.is_train)
+        self.framePit.setHidden(self.is_train)
 
     def train_tab_clicked(self):
         if self.frameTrain.isHidden():
             self.btnTabPit.setChecked(False)
             self.update_frames()
-        if not self.btnTabTrain.isChecked():
+        if not self.is_train:
             self.btnTabTrain.setChecked(True)
 
     def pit_tab_clicked(self):
@@ -152,74 +164,104 @@ class MainWindow(Ui_FormMainMenu):
             self.btnTabPit.setChecked(True)
 
     def get_args_name(self) -> str:
-        return self.train_args_name if self.btnTabTrain.isChecked() else self.pit_args_name
-
-    def get_env_name(self) -> str:
-        return self.train_env_name if self.btnTabTrain.isChecked() else self.pit_env_name
+        return self.train_args_name if self.is_train else self.pit_args_name
 
     def set_args_name(self, value: str):
-        if self.btnTabTrain.isChecked():
+        if self.is_train:
             self.train_args_name = value
         else:
             self.pit_args_name = value
 
-    def set_env_name(self, value: str):
-        if self.btnTabTrain.isChecked():
-            self.train_env_name = value
+    def update_stats(self):
+        train_status = pit_status = 'Status: '
+        if self.coach:
+            if self.coach.state == TrainState.STANDBY:
+                train_status += 'Ready to train'
+            elif self.coach.state == TrainState.INIT_AGENTS:
+                train_status += 'Initializing self play agents'
+            elif self.coach.state == TrainState.SELF_PLAY:
+                train_status += 'Self playing'
+            elif self.coach.state == TrainState.SAVE_SAMPLES:
+                train_status += 'Saving self play samples'
+            elif self.coach.state == TrainState.KILL_AGENTS:
+                train_status += 'Killing self play agents'
+            elif self.coach.state == TrainState.PROCESS_RESULTS:
+                train_status += 'Processing self play games'
+            elif self.coach.state == TrainState.TRAIN:
+                train_status += 'Training net'
+            elif self.coach.state == TrainState.COMPARE_BASELINE:
+                train_status += 'Comparing to baseline'
+            elif self.coach.state == TrainState.COMPARE_PAST:
+                train_status += 'Comparing to past'
         else:
-            self.pit_env_name = value
-
-    def update_train_stats(self):
-        status = 'Status: '
-        if not self.coach:
             if not self.train_args:
-                status += 'Not ready, choose args'
+                train_status += 'Not ready, choose args'
             elif not self.current_env:
-                status += 'Not ready, choose env'
+                train_status += 'Not ready, choose env'
             else:
-                status += 'Ready to train'
+                train_status += 'Ready to train'
 
-        elif self.coach.state == TrainState.STANDBY:
-            status += 'Ready to train'
-        elif self.coach.state == TrainState.INIT_AGENTS:
-            status += 'Initializing self play agents'
-        elif self.coach.state == TrainState.SELF_PLAY:
-            status += 'Self playing'
-        elif self.coach.state == TrainState.SAVE_SAMPLES:
-            status += 'Saving self play samples'
-        elif self.coach.state == TrainState.KILL_AGENTS:
-            status += 'Killing self play agents'
-        elif self.coach.state == TrainState.PROCESS_RESULTS:
-            status += 'Processing self play games'
-        elif self.coach.state == TrainState.TRAIN:
-            status += 'Training net'
-        elif self.coach.state == TrainState.COMPARE_BASELINE:
-            status += 'Comparing to baseline'
-        elif self.coach.state == TrainState.COMPARE_PAST:
-            status += 'Comparing to past'
+        if self.arena:
+            if self.arena.state == ArenaState.STANDBY:
+                pit_status += 'Ready to start'
+            elif self.arena.state == ArenaState.SINGLE_GAME:
+                pit_status += 'Playing single game'
+            elif self.arena.state == ArenaState.PLAY_GAMES:
+                pit_status += 'Playing games'
+        else:
+            if not self.pit_args:
+                pit_status += 'Not ready, choose args'
+            elif not self.current_env:
+                pit_status += 'Not ready, choose env'
+            elif not self.pit_players:
+                pit_status += 'Not ready, choose players'
+            else:
+                pit_status += 'Ready to start'
 
-        self.lblStatus.setText(status)
-        if not self.coach: return
-        self.lblTrainIteration.setText('Iteration: ' + str(self.coach.model_iter))
-        self.lblTrainSelfPlayIter.setText('Self Play Iter: ' + str(self.coach.self_play_iter))
-        self.lblTrainLossPolicy.setText('Policy Loss: ' + str(round(self.coach.train_net.l_pi, 3)))
-        self.lblTrainLossValue.setText('Value Loss: ' + str(round(self.coach.train_net.l_v, 3)))
-        self.lblTrainLossTotal.setText('Total Loss: ' + str(round(self.coach.train_net.l_total, 3)))
-        if self.coach.state == TrainState.SELF_PLAY:
-            self.lblTrainNumGames.setText(
-                f'Games Played: {self.coach.games_played.value}/{self.train_args.gamesPerIteration}'
-            )
-            self.lblTrainEpsTime.setText('Episode Time: ' + str(round(self.coach.sample_time, 3)
-                                                                if self.coach.sample_time else ' '))
-            self.lblTrainIterTime.setText('Iteration Time: ' + str(self.coach.iter_time or ' '))
-            self.lblTrainTimeRemaining.setText('Est. Time Remaining: ' + str(self.coach.eta or ' '))
-        elif self.coach.state == TrainState.TRAIN:
-            self.lblTrainNumGames.setText(
-                f'Train Step: {self.coach.train_net.current_step}/{self.coach.train_net.total_steps}'
-            )
-            self.lblTrainEpsTime.setText('Train Step Time: ' + str(round(self.coach.train_net.step_time, 3)))
-            self.lblTrainIterTime.setText('Train Time: ' + str(self.coach.train_net.elapsed_time))
-            self.lblTrainTimeRemaining.setText('Est. Time Remaining: ' + str(self.coach.train_net.eta))
+        self.lblStatus.setText(train_status)
+        self.lblPitStatus.setText(pit_status)
+        if (not self.coach and self.is_train) or (not self.arena and not self.is_train): return
+
+        if self.is_train:
+            self.lblTrainIteration.setText('Iteration: ' + str(self.coach.model_iter))
+            self.lblTrainSelfPlayIter.setText('Self Play Iter: ' + str(self.coach.self_play_iter))
+            self.lblTrainLossPolicy.setText('Policy Loss: ' + str(round(self.coach.train_net.l_pi, 3)))
+            self.lblTrainLossValue.setText('Value Loss: ' + str(round(self.coach.train_net.l_v, 3)))
+            self.lblTrainLossTotal.setText('Total Loss: ' + str(round(self.coach.train_net.l_total, 3)))
+
+            if self.coach.state == TrainState.SELF_PLAY:
+                self.lblTrainNumGames.setText(
+                    f'Games Played: {self.coach.games_played.value}/{self.train_args.gamesPerIteration}'
+                )
+                self.lblTrainEpsTime.setText('Episode Time: ' + str(round(self.coach.sample_time, 3)))
+                self.lblTrainIterTime.setText('Iteration Time: ' + str(self.coach.iter_time))
+                self.lblTrainTimeRemaining.setText('Est. Time Remaining: ' + str(self.coach.eta))
+
+            elif self.coach.state == TrainState.TRAIN:
+                self.lblTrainNumGames.setText(
+                    f'Train Step: {self.coach.train_net.current_step}/{self.coach.train_net.total_steps}'
+                )
+                self.lblTrainEpsTime.setText('Train Step Time: ' + str(round(self.coach.train_net.step_time, 3)))
+                self.lblTrainIterTime.setText('Train Time: ' + str(self.coach.train_net.elapsed_time))
+                self.lblTrainTimeRemaining.setText('Est. Time Remaining: ' + str(self.coach.train_net.eta))
+
+            elif self.coach.state == TrainState.COMPARE_PAST or self.coach.state == TrainState.COMPARE_BASELINE:
+                self.lblTrainNumGames.setText(
+                    f'Games Played: {self.coach.arena.games_played}/{self.coach.arena.total_games}'
+                )
+                self.lblTrainEpsTime.setText('Episode Time: ' + str(round(self.coach.arena.eps_time, 3)))
+                self.lblTrainIterTime.setText('Total Time: ' + str(self.coach.arena.total_time))
+                self.lblTrainTimeRemaining.setText('Est. Time Remaining: ' + str(self.coach.arena.eta))
+
+        else:
+            if self.arena.total_games > 1:
+                self.lblPitNumGames.setText(f'Games Played: {self.arena.games_played}/{self.arena.total_games}')
+            else:
+                self.lblPitNumGames.setText(f'Num. Turns: {self.arena.game_state.turns}/{self.pit_args.max_moves}')
+            self.lblPitWinrates.setText(f'Win Rates: {[round(w, 3) for w in self.arena.winrates]}')
+            self.lblPitEpsTime.setText(f'Episode Time: {round(self.arena.eps_time, 3)}')
+            self.lblPitIterTime.setText(f'Total Time: {self.arena.total_time}')
+            self.lblPitTimeRemaining.setText(f'Est. Time Remaining: {self.arena.eta}')
 
     def start_train_clicked(self):
         if self.coach and self.coach.pause_train.is_set() and not self.coach.stop_train.is_set():
@@ -250,16 +292,21 @@ class MainWindow(Ui_FormMainMenu):
         self.train_timer.start()
 
     def train_update(self):
-        self.update_train_stats()
+        self.update_stats()
         if self.coach.state == TrainState.SELF_PLAY:
             self.progressIteration.setValue(self.coach.games_played.value / self.train_args.gamesPerIteration * 100)
         elif self.coach.state == TrainState.TRAIN and self.coach.train_net.total_steps:
             self.progressIteration.setValue(self.coach.train_net.current_step / self.coach.train_net.total_steps * 100)
+        elif self.coach.state == TrainState.COMPARE_PAST or self.coach.state == TrainState.COMPARE_BASELINE:
+            self.progressIteration.setValue(self.coach.arena.games_played / self.coach.arena.total_games * 100)
         else:
             self.progressIteration.setValue(0)
         self.progressTotal.setValue(self.coach.model_iter / self.train_args.numIters * 100)
 
-        if self.coach.stop_train.is_set():
+        if self.coach.state == TrainState.STANDBY:
+            self.train_ended_counter += 1
+
+        if self.coach.stop_train.is_set() or self.train_ended_counter * self.train_timer.interval() >= 2:
             self.train_timer.stop()
             self.train_thread.join()
 
@@ -273,7 +320,6 @@ class MainWindow(Ui_FormMainMenu):
 
             self.progressIteration.setValue(0)
             self.progressTotal.setValue(0)
-            self.update_train_stats()
 
             self.train_args.selfPlayModelIter = self.coach.self_play_iter
             try:
@@ -281,12 +327,20 @@ class MainWindow(Ui_FormMainMenu):
             except (IOError, OSError) as e:
                 show_dialog('Unable to save args after training was stopped: ' + str(e), self, error=True)
 
+            self.coach = None
+            self.update_stats()
+
         elif self.coach.pause_train.is_set():
             self.btnTrainControlStart.setEnabled(True)
             self.btnTrainControlPause.setEnabled(False)
             self.btnTrainControlStop.setEnabled(True)
 
     def start_pit_clicked(self):
+        def controls_on():
+            self.btnPitControlStart.setEnabled(True)
+            self.btnPitControlPause.setEnabled(False)
+            self.btnPitControlStop.setEnabled(False)
+
         self.btnPitControlStart.setEnabled(False)
         self.btnPitControlPause.setEnabled(True)
         self.btnPitControlStop.setEnabled(True)
@@ -295,12 +349,107 @@ class MainWindow(Ui_FormMainMenu):
             self.arena.pause_event.clear()
             return
 
-        # self.arena = Arena()
+        if self.checkBatchedArena.isChecked() and not all([p.supports_process() for p in self.pit_players]):
+            show_dialog('Cannot start Arena with the current players and Batched Arena option because '
+                        'not all selected players support batched Arena.', self, error=True)
+            controls_on()
+            return
+
+        text, ok = QInputDialog.getText(
+            self, 'Number of Games', 'Enter the number of games to play:', QLineEdit.Normal,
+            text=str(self.pit_args.arenaCompare), inputMethodHints=Qt.InputMethodHint.ImhDigitsOnly
+        )
+        if ok:
+            try:
+                num_games = int(text)
+            except ValueError:
+                show_dialog('Invalid value for number of games was provided.', self, error=True)
+                controls_on()
+                return
+        else:
+            controls_on()
+            return
+
+        for i, player in enumerate(self.pit_players):
+            if player.requires_model():
+                filename, model = self.pit_models[i]
+                if model.loaded: continue
+
+                try:
+                    model.load_checkpoint(Path(self.pit_args.checkpoint) / self.pit_args.run_name, filename)
+                except (IOError, RuntimeError) as e:
+                    show_dialog(f'Unable to load the model file {filename}: {e}', self, error=True)
+                    controls_on()
+                    return
+
+                args = (self.current_env, self.pit_args, model)
+            else:
+                args = (self.current_env, self.pit_args)
+
+            self.pit_players[i] = self.pit_players[i](*args)
+
+        self.arena = Arena(self.pit_players, self.current_env, use_batched_mcts=self.checkBatchedArena.isChecked(),
+                           args=self.pit_args)
         self.btnPitControlPause.clicked.connect(self.arena.pause_event.set)
         self.btnPitControlStop.clicked.connect(self.arena.stop_event.set)
+        self.btnLoadPitArgs.setEnabled(False)
+        self.btnLoadPitEnv.setEnabled(False)
+        self.btnEditPitArgs.setEnabled(False)
+        self.btnEditPlayers.setEnabled(False)
+
+        self.pit_executor = concurrent.futures.ThreadPoolExecutor(1)
+        self.pit_result = self.pit_executor.submit(self.arena.play_games, num_games,
+                                                   self.checkConsoleVerbose.isChecked(),
+                                                   self.checkShufflePlayers.isChecked())
+        self.pit_timer.start()
+        """
+        self.pit_thread = threading.Thread(
+            target=self.arena.play_games,
+            args=(num_games, self.checkConsoleVerbose.isChecked(), self.checkShufflePlayers.isChecked()),
+            daemon=True
+        )
+        self.pit_thread.start()
+        self.pit_timer.start()
+        """
 
     def pit_update(self):
-        pass
+        self.update_stats()
+        if self.arena.total_games > 1:
+            self.progressPit.setValue(self.arena.games_played / self.arena.total_games * 100)
+        else:
+            self.progressPit.setValue(self.arena.game_state.turns / self.pit_args.max_moves * 100)
+
+        if self.arena.stop_event.is_set() or self.arena.state == ArenaState.STANDBY:
+            self.pit_timer.stop()
+
+            self.btnPitControlStart.setEnabled(True)
+            self.btnPitControlPause.setEnabled(False)
+            self.btnPitControlStop.setEnabled(False)
+
+            self.btnLoadPitArgs.setEnabled(True)
+            self.btnLoadPitEnv.setEnabled(True)
+            self.btnEditPitArgs.setEnabled(True)
+            self.btnEditPlayers.setEnabled(True)
+
+            self.progressPit.setValue(0)
+
+            wins, draws, winrates = self.pit_result.result()
+            self.pit_executor.shutdown(wait=True)
+            self.arena = None
+            self.update_stats()
+
+            msgbox = QMessageBox(self)
+            msgbox.setText(
+                f'Arena ended, the results are:\n\nWins of Players: {wins}\nDraws: {draws}\nWinrates: {winrates}'
+            )
+            msgbox.setFont(QFont('Arial', 14))
+            msgbox.setWindowTitle('Arena Result')
+            msgbox.show()
+
+        elif self.arena.pause_event.is_set():
+            self.btnPitControlStart.setEnabled(True)
+            self.btnPitControlPause.setEnabled(False)
+            self.btnPitControlStop.setEnabled(True)
 
     def _show_env_select_dialog(self):
         def dialog_accepted():
@@ -316,7 +465,7 @@ class MainWindow(Ui_FormMainMenu):
                 show_dialog('Failed to load the selected training env: ' + str(e), self, error=True)
                 return
 
-            self.set_env_name(chosen_env)
+            self.env_name = chosen_env
             self.update_env_and_args()
             dialog.close()
 
@@ -328,9 +477,8 @@ class MainWindow(Ui_FormMainMenu):
 
         dialog = Ui_DialogCombo(parent=self)
         dialog.comboBox.addItems(envs)
-        env_name = self.get_env_name()
-        if env_name and env_name in envs:
-            dialog.comboBox.setCurrentText(env_name)
+        if self.env_name and self.env_name in envs:
+            dialog.comboBox.setCurrentText(self.env_name)
         dialog.lblTitle.setText('Select an environment from below:')
         dialog.setWindowTitle('Select Env')
         dialog.btnBox.accepted.connect(dialog_accepted)
@@ -453,6 +601,82 @@ class MainWindow(Ui_FormMainMenu):
         dialog.btnBoxSave.rejected.connect(dialog.close)
         dialog.show()
 
+    def _show_player_editor(self):
+        players = dict()
+        player_modules = []
+
+        def _add_module(mod_path):
+            player_modules.append(__import__(str(mod_path).replace(os.sep, '.'), fromlist=['']))
+
+        _add_module(ENVS_DIR / self.env_name / PLAYERS_MODULE)
+        _add_module(ALPHAZERO_ROOT / GENERIC_PLAYERS_MODULE)
+
+        for module in player_modules:
+            for name, cls in inspect.getmembers(module):
+                if inspect.isclass(cls) and issubclass(cls, BasePlayer) and cls != BasePlayer:
+                    players.update({name: cls})
+
+        chosen_players = []
+        chosen_models = dict()
+        dialog = None
+        model_dialog = None
+        user_cancelled = False
+
+        def _accept_model():
+            chosen_model = model_dialog.comboBox.currentText()
+            chosen_models[len(chosen_players) - 1] = (chosen_model, NNetWrapper(self.current_env, self.pit_args))
+            model_dialog.close()
+            dialog.close()
+
+        def _accept():
+            chosen_players.append(players[dialog.comboBox.currentText()])
+            if chosen_players[-1].requires_model():
+                model_files = [x.name for x in (Path(self.pit_args.checkpoint) / self.pit_args.run_name).glob('*.pkl')]
+
+                nonlocal model_dialog
+                model_dialog = Ui_DialogCombo(parent=self)
+                model_dialog.comboBox.addItems(model_files)
+
+                last_model = self.pit_models.get(len(chosen_players) - 1)
+                if last_model:
+                    model_dialog.comboBox.setCurrentText(last_model[0])
+
+                model_dialog.lblTitle.setText('Select the model to use for this player:')
+                model_dialog.setWindowTitle('Edit Players')
+                model_dialog.btnBox.accepted.connect(_accept_model)
+                model_dialog.btnBox.rejected.connect(_cancel)
+                dialog.hide()
+                if model_dialog.exec_() != 0: _cancel()
+            else:
+                dialog.close()
+
+        def _cancel():
+            nonlocal user_cancelled
+            user_cancelled = True
+            dialog.close()
+            if model_dialog:
+                model_dialog.close()
+
+        for player_idx in range(self.current_env.num_players()):
+            if user_cancelled: return
+            dialog = Ui_DialogCombo(parent=self)
+            dialog.comboBox.addItems(players.keys())
+
+            if self.pit_players and player_idx < len(self.pit_players):
+                used_player = self.pit_players[player_idx].__name__
+                if used_player in players.keys():
+                    dialog.comboBox.setCurrentText(used_player)
+
+            dialog.lblTitle.setText(f'Select a player type for player {player_idx + 1}:')
+            dialog.setWindowTitle('Edit Players')
+            dialog.btnBox.accepted.connect(_accept)
+            dialog.btnBox.rejected.connect(_cancel)
+            if dialog.exec_() != 0: return
+
+        self.pit_players = chosen_players
+        self.pit_models = chosen_models
+        self.update_env_and_args()
+
     def _parse_str_args(self, args: dotdict):
         new_args = dotdict()
         for k, v in args.items():
@@ -500,11 +724,17 @@ class MainWindow(Ui_FormMainMenu):
         return save_args
 
     def update_env_and_args(self):
-        self.lblCurrentRun.setText(f'Current Env: {self.train_env_name}\nCurrent Args: {self.train_args_name}')
-        self.lblCurrentPitRun.setText(f'Current Env: {self.pit_env_name}\nCurrent Args: {self.pit_args_name}')
-        self.btnTrainControlStart.setEnabled(self.current_env is not None and self.train_args is not None)
-        self.btnPitControlStart.setEnabled(self.current_env is not None and self.pit_args is not None)
-        self.update_train_stats()
+        self.lblCurrentRun.setText(f'Current Env: {self.env_name}\nCurrent Train Args: {self.train_args_name}')
+        self.lblCurrentPitRun.setText(
+            f'Current Env: {self.env_name}\nCurrent Arena Args: {self.pit_args_name}\nCurrent Players: '
+            f'{", ".join([p.__name__ for p in self.pit_players]) if self.pit_players else None}'
+        )
+        self.btnTrainControlStart.setEnabled(self.current_env is not None and bool(self.train_args))
+        self.btnPitControlStart.setEnabled(
+            self.current_env is not None and bool(self.pit_args) and bool(self.pit_players)
+        )
+        self.btnEditPlayers.setEnabled(self.current_env is not None and bool(self.pit_args))
+        self.update_stats()
 
     def open_tensorboard(self):
         if not self.tb_url:
