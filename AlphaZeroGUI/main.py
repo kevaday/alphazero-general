@@ -105,7 +105,11 @@ class MainWindow(Ui_FormMainMenu):
         self.btnRemoveArgs.clicked.connect(self.remove_saved_args)
         self.btnRemoveArgsPit.clicked.connect(self.remove_saved_args)
         self.btnTrainControlStart.clicked.connect(self.start_train_clicked)
+        self.btnTrainControlPause.clicked.connect(self.pause_train)
+        self.btnTrainControlStop.clicked.connect(self.stop_train)
         self.btnPitControlStart.clicked.connect(self.start_pit_clicked)
+        self.btnPitControlPause.clicked.connect(self.pause_pit)
+        self.btnPitControlStop.clicked.connect(self.stop_pit)
 
         self.btnTrainControlStart.setEnabled(False)
         self.btnTrainControlPause.setEnabled(False)
@@ -277,12 +281,6 @@ class MainWindow(Ui_FormMainMenu):
         self.btnTrainControlPause.setEnabled(True)
         self.btnTrainControlStop.setEnabled(True)
 
-        self.btnTrainControlPause.clicked.connect(
-            lambda: (self.coach.pause_train.set(), self.coach.arena.pause_event.set() if self.coach.arena else None)
-        )
-        self.btnTrainControlStop.clicked.connect(
-            lambda: (self.coach.stop_train.set(), self.coach.arena.stop_event.set() if self.coach.arena else None)
-        )
         self.btnLoadTrainArgs.setEnabled(False)
         self.btnEditTrainArgs.setEnabled(False)
         self.btnLoadTrainEnv.setEnabled(False)
@@ -290,6 +288,43 @@ class MainWindow(Ui_FormMainMenu):
         self.train_thread = threading.Thread(target=self.coach.learn, daemon=True)
         self.train_thread.start()
         self.train_timer.start()
+
+    def stop_train(self):
+        self.coach.stop_train.set()
+        if self.coach.arena:
+            self.coach.arena.stop_event.set()
+
+        self.train_timer.stop()
+        self.train_thread.join()
+
+        self.btnTrainControlStart.setEnabled(True)
+        self.btnTrainControlPause.setEnabled(False)
+        self.btnTrainControlStop.setEnabled(False)
+
+        self.btnLoadTrainArgs.setEnabled(True)
+        self.btnEditTrainArgs.setEnabled(True)
+        self.btnLoadTrainEnv.setEnabled(True)
+
+        self.progressIteration.setValue(0)
+        self.progressTotal.setValue(0)
+
+        self.train_args.selfPlayModelIter = self.coach.self_play_iter
+        try:
+            self._save_args_from(self.train_args, ARGS_DIR / (self.train_args_name + '.json'))
+        except (IOError, OSError) as e:
+            show_dialog('Unable to save args after training was stopped: ' + str(e), self, error=True)
+
+        self.coach = None
+        self.update_stats()
+
+    def pause_train(self):
+        self.coach.pause_train.set()
+        if self.coach.arena:
+            self.coach.arena.pause_event.set()
+
+        self.btnTrainControlStart.setEnabled(True)
+        self.btnTrainControlPause.setEnabled(False)
+        self.btnTrainControlStop.setEnabled(True)
 
     def train_update(self):
         self.update_stats()
@@ -306,34 +341,8 @@ class MainWindow(Ui_FormMainMenu):
         if self.coach.state == TrainState.STANDBY:
             self.train_ended_counter += 1
 
-        if self.coach.stop_train.is_set() or self.train_ended_counter * self.train_timer.interval() >= 2:
-            self.train_timer.stop()
-            self.train_thread.join()
-
-            self.btnTrainControlStart.setEnabled(True)
-            self.btnTrainControlPause.setEnabled(False)
-            self.btnTrainControlStop.setEnabled(False)
-
-            self.btnLoadTrainArgs.setEnabled(True)
-            self.btnEditTrainArgs.setEnabled(True)
-            self.btnLoadTrainEnv.setEnabled(True)
-
-            self.progressIteration.setValue(0)
-            self.progressTotal.setValue(0)
-
-            self.train_args.selfPlayModelIter = self.coach.self_play_iter
-            try:
-                self._save_args_from(self.train_args, ARGS_DIR / (self.train_args_name + '.json'))
-            except (IOError, OSError) as e:
-                show_dialog('Unable to save args after training was stopped: ' + str(e), self, error=True)
-
-            self.coach = None
-            self.update_stats()
-
-        elif self.coach.pause_train.is_set():
-            self.btnTrainControlStart.setEnabled(True)
-            self.btnTrainControlPause.setEnabled(False)
-            self.btnTrainControlStop.setEnabled(True)
+        if self.train_ended_counter * self.train_timer.interval() >= 2:
+            self.stop_train()
 
     def start_pit_clicked(self):
         def controls_on():
@@ -390,8 +399,6 @@ class MainWindow(Ui_FormMainMenu):
 
         self.arena = Arena(self.pit_players, self.current_env, use_batched_mcts=self.checkBatchedArena.isChecked(),
                            args=self.pit_args)
-        self.btnPitControlPause.clicked.connect(self.arena.pause_event.set)
-        self.btnPitControlStop.clicked.connect(self.arena.stop_event.set)
         self.btnLoadPitArgs.setEnabled(False)
         self.btnLoadPitEnv.setEnabled(False)
         self.btnEditPitArgs.setEnabled(False)
@@ -412,6 +419,40 @@ class MainWindow(Ui_FormMainMenu):
         self.pit_timer.start()
         """
 
+    def stop_pit(self):
+        self.arena.stop_event.set()
+        self.pit_timer.stop()
+
+        self.btnPitControlStart.setEnabled(True)
+        self.btnPitControlPause.setEnabled(False)
+        self.btnPitControlStop.setEnabled(False)
+
+        self.btnLoadPitArgs.setEnabled(True)
+        self.btnLoadPitEnv.setEnabled(True)
+        self.btnEditPitArgs.setEnabled(True)
+        self.btnEditPlayers.setEnabled(True)
+
+        self.progressPit.setValue(0)
+
+        wins, draws, winrates = self.pit_result.result()
+        self.pit_executor.shutdown(wait=True)
+        self.arena = None
+        self.update_stats()
+
+        msgbox = QMessageBox(self)
+        msgbox.setText(
+            f'Arena ended, the results are:\n\nWins of Players: {wins}\nDraws: {draws}\nWinrates: {winrates}'
+        )
+        msgbox.setFont(QFont('Arial', 14))
+        msgbox.setWindowTitle('Arena Result')
+        msgbox.show()
+
+    def pause_pit(self):
+        self.arena.pause_event.set()
+        self.btnPitControlStart.setEnabled(True)
+        self.btnPitControlPause.setEnabled(False)
+        self.btnPitControlStop.setEnabled(True)
+
     def pit_update(self):
         self.update_stats()
         if self.arena.total_games > 1:
@@ -419,37 +460,8 @@ class MainWindow(Ui_FormMainMenu):
         else:
             self.progressPit.setValue(self.arena.game_state.turns / self.pit_args.max_moves * 100)
 
-        if self.arena.stop_event.is_set() or self.arena.state == ArenaState.STANDBY:
-            self.pit_timer.stop()
-
-            self.btnPitControlStart.setEnabled(True)
-            self.btnPitControlPause.setEnabled(False)
-            self.btnPitControlStop.setEnabled(False)
-
-            self.btnLoadPitArgs.setEnabled(True)
-            self.btnLoadPitEnv.setEnabled(True)
-            self.btnEditPitArgs.setEnabled(True)
-            self.btnEditPlayers.setEnabled(True)
-
-            self.progressPit.setValue(0)
-
-            wins, draws, winrates = self.pit_result.result()
-            self.pit_executor.shutdown(wait=True)
-            self.arena = None
-            self.update_stats()
-
-            msgbox = QMessageBox(self)
-            msgbox.setText(
-                f'Arena ended, the results are:\n\nWins of Players: {wins}\nDraws: {draws}\nWinrates: {winrates}'
-            )
-            msgbox.setFont(QFont('Arial', 14))
-            msgbox.setWindowTitle('Arena Result')
-            msgbox.show()
-
-        elif self.arena.pause_event.is_set():
-            self.btnPitControlStart.setEnabled(True)
-            self.btnPitControlPause.setEnabled(False)
-            self.btnPitControlStop.setEnabled(True)
+        if self.arena.state == ArenaState.STANDBY:
+            self.stop_train()
 
     def _show_env_select_dialog(self):
         def dialog_accepted():
