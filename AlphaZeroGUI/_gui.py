@@ -83,6 +83,7 @@ class Ui_DialogEditArgs(QtWidgets.QDialog):
 class Ui_FormMainMenu(QtWidgets.QMainWindow):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
+        self.setWindowFlags(QtCore.Qt.WindowMinimizeButtonHint | QtCore.Qt.WindowCloseButtonHint)
         self.setupUi(self)
 
     def setupUi(self, FormMainMenu):

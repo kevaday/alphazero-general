@@ -139,6 +139,7 @@ class MainWindow(Ui_FormMainMenu):
 
         self.train_ended_counter = 0
         self.current_env = None
+        self.env_module = None
         self.env_name = None
         self.tb_url = None
 
@@ -397,16 +398,22 @@ class MainWindow(Ui_FormMainMenu):
 
             self.pit_players[i] = self.pit_players[i](*args)
 
+        if hasattr(self.env_module, 'display'):
+            display = self.env_module.display
+            verbose = self.checkConsoleVerbose.isChecked()
+        else:
+            display = None
+            verbose = False
+
         self.arena = Arena(self.pit_players, self.current_env, use_batched_mcts=self.checkBatchedArena.isChecked(),
-                           args=self.pit_args)
+                           display=display, args=self.pit_args)
         self.btnLoadPitArgs.setEnabled(False)
         self.btnLoadPitEnv.setEnabled(False)
         self.btnEditPitArgs.setEnabled(False)
         self.btnEditPlayers.setEnabled(False)
 
         self.pit_executor = concurrent.futures.ThreadPoolExecutor(1)
-        self.pit_result = self.pit_executor.submit(self.arena.play_games, num_games,
-                                                   self.checkConsoleVerbose.isChecked(),
+        self.pit_result = self.pit_executor.submit(self.arena.play_games, num_games, verbose,
                                                    self.checkShufflePlayers.isChecked())
         self.pit_timer.start()
         """
@@ -461,7 +468,7 @@ class MainWindow(Ui_FormMainMenu):
             self.progressPit.setValue(self.arena.game_state.turns / self.pit_args.max_moves * 100)
 
         if self.arena.state == ArenaState.STANDBY:
-            self.stop_train()
+            self.stop_pit()
 
     def _show_env_select_dialog(self):
         def dialog_accepted():
@@ -471,8 +478,8 @@ class MainWindow(Ui_FormMainMenu):
                 return
 
             try:
-                env_module = __import__(str(ENVS_DIR / chosen_env / chosen_env).replace(os.sep, '.'), fromlist=[''])
-                self.current_env = env_module.Game
+                self.env_module = __import__(str(ENVS_DIR / chosen_env / chosen_env).replace(os.sep, '.'), fromlist=[''])
+                self.current_env = self.env_module.Game
             except Exception as e:
                 show_dialog('Failed to load the selected training env: ' + str(e), self, error=True)
                 return
@@ -739,11 +746,13 @@ class MainWindow(Ui_FormMainMenu):
         self.lblCurrentRun.setText(f'Current Env: {self.env_name}\nCurrent Train Args: {self.train_args_name}')
         self.lblCurrentPitRun.setText(
             f'Current Env: {self.env_name}\nCurrent Arena Args: {self.pit_args_name}\nCurrent Players: '
-            f'{", ".join([p.__name__ for p in self.pit_players]) if self.pit_players else None}'
+            f'{", ".join([p.__name__ if inspect.isclass(p) else p.__class__.__name__ for p in self.pit_players]) if self.pit_players else None}'
         )
-        self.btnTrainControlStart.setEnabled(self.current_env is not None and bool(self.train_args))
+        self.btnTrainControlStart.setEnabled(
+            (self.coach is None or (self.coach is not None and self.coach.pause_train.is_set())) and self.current_env is not None and bool(self.train_args)
+        )
         self.btnPitControlStart.setEnabled(
-            self.current_env is not None and bool(self.pit_args) and bool(self.pit_players)
+            (self.arena is None or (self.arena is not None and self.arena.pause_event.is_set())) and self.current_env is not None and bool(self.pit_args) and bool(self.pit_players)
         )
         self.btnEditPlayers.setEnabled(self.current_env is not None and bool(self.pit_args))
         self.update_stats()
