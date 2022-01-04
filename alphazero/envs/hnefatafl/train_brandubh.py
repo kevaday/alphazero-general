@@ -4,7 +4,7 @@ pyximport.install(setup_args={'include_dirs': numpy.get_include()})
 
 from alphazero.Coach import Coach, get_args
 from alphazero.NNetWrapper import NNetWrapper as nn
-from alphazero.envs.tafl.fastafl import Game as Game
+from alphazero.envs.hnefatafl.fastafl import Game as Game
 from alphazero.GenericPlayers import RawMCTSPlayer
 from alphazero.utils import dotdict
 
@@ -20,7 +20,7 @@ args = get_args(
     numWarmupSims=5,
     probFastSim=0.8,
 
-    selfPlayModelIter=32,
+    selfPlayModelIter=None,
     skipSelfPlayIters=None,
     # train_on_past_data=True,
     # past_data_run_name='brandubh',

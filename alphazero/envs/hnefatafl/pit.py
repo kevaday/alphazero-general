@@ -12,10 +12,10 @@ use this script to play any two agents against each other, or play manually with
 any agent.
 """
 if __name__ == '__main__':
-    from alphazero.envs.tafl.fastafl import Game as Game, display
-    from alphazero.envs.tafl.train_fastafl import args
+    from alphazero.envs.hnefatafl.fastafl import Game as Game, display
+    from alphazero.envs.hnefatafl.train_fastafl import args
     #from alphazero.envs.tafl.train_brandubh import args as args2
-    from alphazero.envs.tafl.players import HumanFastaflPlayer
+    from alphazero.envs.hnefatafl.players import HumanFastaflPlayer
     import random
 
     batched_arena = False

@@ -32,7 +32,7 @@ DEFAULT_ARGS = dotdict({
     'train_batch_size': 1024,
     'arena_batch_size': 64,
     'train_steps_per_iteration': 64,
-    'train_sample_ratio': 1,
+    'train_sample_ratio': 2,
     'averageTrainSteps': False,
     'autoTrainSteps': True,  # Calculates the average number of samples in the training window
                               # if averageTrainSteps set to True, otherwise uses latest
@@ -83,7 +83,7 @@ DEFAULT_ARGS = dotdict({
     'min_next_model_winrate': 0.52,
     'use_draws_for_winrate': True,
     'load_model': True,
-    'cpuct': 2,
+    'cpuct': 1.25,
     'value_loss_weight': 1.5,
     'checkpoint': 'checkpoint',
     'data': 'data',
@@ -106,10 +106,14 @@ DEFAULT_ARGS = dotdict({
         'weight_decay': 1e-4
     }),
 
+    'nnet_type': 'resnet',  # 'resnet' or 'fc'
     'num_channels': 32,
     'depth': 4,
     'value_head_channels': 16,
     'policy_head_channels': 16,
+
+    # fc only uses the following
+    'input_fc_layers': [1024] * 4,  # only for fc networks
     'value_dense_layers': [512, 64],
     'policy_dense_layers': [512, 256]
 })
@@ -157,6 +161,8 @@ class Coach:
         self.self_play_net = nnet.__class__(game_cls, args)
         self.args = args
         self.args.num_players = self.game_cls.num_players()
+        
+        train_iter = self.args.startIter
 
         if self.args.load_model:
             networks = sorted(glob(self.args.checkpoint + '/' + self.args.run_name + '/*'))
@@ -165,13 +171,17 @@ class Coach:
                 self._save_model(self.train_net, 0)
                 self.args.startIter = 1
 
-            self._load_model(self.train_net, self.args.startIter - 1)
-            self.self_play_iter = self.args.selfPlayModelIter or (self.args.startIter - 1)
+            train_iter = self.args.startIter - 1
+            self._load_model(self.train_net, train_iter)
+
+        if self.args.selfPlayModelIter == 0:
+            self.self_play_iter = 0
         else:
-            self.self_play_iter = self.args.selfPlayModelIter or self.args.startIter
+            self.self_play_iter = self.args.selfPlayModelIter or train_iter
 
         if self.args.model_gating:
             self._load_model(self.self_play_net, self.self_play_iter)
+        
         self.gating_counter = 0
         self.warmup = False
         self.loss_pi = 0
@@ -230,6 +240,8 @@ class Coach:
                     if self.model_iter <= self.args.numWarmupIters:
                         print('Warmup: random policy and value')
                         self.warmup = True
+                    elif self.self_play_iter == 0:
+                        self.warmup = True
                     elif self.warmup:
                         self.warmup = False
 
@@ -250,7 +262,7 @@ class Coach:
                 if self.stop_train.is_set():
                     break
 
-                if not self.warmup and self.args.compareWithBaseline and (self.model_iter - 1) % self.args.baselineCompareFreq == 0:
+                if self.args.compareWithBaseline and (self.model_iter - 1) % self.args.baselineCompareFreq == 0:
                     #if self.model_iter == 1:
                     #    print(
                     #        'Note: Comparisons against the baseline do not use monte carlo tree search.'
@@ -259,7 +271,7 @@ class Coach:
                     if self.stop_train.is_set():
                         break
 
-                if not self.warmup and self.args.compareWithPast and (self.model_iter - 1) % self.args.pastCompareFreq == 0:
+                if self.args.compareWithPast and (self.model_iter - 1) % self.args.pastCompareFreq == 0:
                     self.compareToPast(self.model_iter)
                     if self.stop_train.is_set():
                         break

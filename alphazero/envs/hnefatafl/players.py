@@ -1,6 +1,6 @@
 from hnefatafl.engine import Move, BoardGameException
-from alphazero.envs.tafl.tafl import get_action
-from alphazero.envs.tafl.fastafl import get_action as ft_get_action
+from alphazero.envs.hnefatafl.tafl_old import get_action
+from alphazero.envs.hnefatafl.fastafl import get_action as ft_get_action
 from alphazero.GenericPlayers import BasePlayer
 from alphazero.Game import GameState
 

@@ -1,4 +1,4 @@
-from alphazero.NNetArchitecture import NNetArchitecture
+from alphazero.NNetArchitecture import ResNet, FullyConnected
 from alphazero.pytorch_classification.utils import Bar, AverageMeter
 from alphazero.Game import GameState
 from threading import Event
@@ -82,7 +82,14 @@ class BaseWrapper(ABC):
 class NNetWrapper(BaseWrapper):
     def __init__(self, game_cls, args):
         super().__init__(game_cls, args)
-        self.nnet = NNetArchitecture(game_cls, args)
+
+        if args.nnet_type == 'resnet':
+            self.nnet = ResNet(game_cls, args)
+        elif args.nnet_type == 'fc':
+            self.nnet = FullyConnected(game_cls, args)
+        else:
+            raise ValueError(f'Unknown NNet type "{args.nnet_type}"')
+
         self.action_size = game_cls.action_size()
         self.optimizer = args.optimizer(self.nnet.parameters(), lr=args.lr, **args.optimizer_args)
 

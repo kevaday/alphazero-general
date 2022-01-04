@@ -15,10 +15,11 @@ pyximport.install(setup_args={'include_dirs': np.get_include()})
 
 #from alphazero.cGame import GameState
 #from alphazero.cGame cimport GameState
-from fastafl.cengine import Board, Square
-from fastafl.cengine cimport Board, Square
+from boardgame import Square
+from boardgame.board cimport Square
+from fastafl.cengine import Board
+from fastafl.cengine cimport Board
 from fastafl import variants
-from typing import List, Tuple, Any
 
 
 DTYPE = np.float32
@@ -29,7 +30,7 @@ cpdef Board _get_board():
     return Board(*GAME_VARIANT)
 
 
-cdef tuple GAME_VARIANT = variants.hnefatafl_args
+cdef tuple GAME_VARIANT = variants.brandubh_args
 cdef int NUM_PLAYERS = 2
 cdef int NUM_STACKED_OBSERVATIONS = 1
 cdef int NUM_BASE_CHANNELS = 5
@@ -39,7 +40,7 @@ cdef Board b = _get_board()
 cdef int ACTION_SIZE = b.width * b.height * (b.width + b.height - 2)
 cdef tuple OBS_SIZE = (NUM_CHANNELS, b.width, b.height)
 
-cdef int DRAW_MOVE_COUNT = 512
+cdef int DRAW_MOVE_COUNT = 100
 
 
 cpdef tuple get_move(Board board, int action):

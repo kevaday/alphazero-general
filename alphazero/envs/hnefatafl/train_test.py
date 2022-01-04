@@ -4,7 +4,7 @@ pyximport.install()
 
 from alphazero.Coach import Coach, get_args
 from alphazero.NNetWrapper import NNetWrapper as nn
-from alphazero.envs.tafl.tafl import TaflGame as Game, NUM_STACKED_OBSERVATIONS, DRAW_MOVE_COUNT
+from alphazero.envs.hnefatafl.tafl import TaflGame as Game, NUM_STACKED_OBSERVATIONS, DRAW_MOVE_COUNT
 from alphazero.GenericPlayers import RawMCTSPlayer
 from alphazero.utils import dotdict
 

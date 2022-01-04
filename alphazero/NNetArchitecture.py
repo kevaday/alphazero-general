@@ -15,9 +15,9 @@ def conv3x3(in_channels, out_channels, stride=1):
 
 # fully connected layers
 def mlp(
-    input_size,
-    layer_sizes,
-    output_size,
+    input_size: int,
+    layer_sizes: list,
+    output_size: int,
     output_activation=nn.Identity,
     activation=nn.ELU,
 ):
@@ -33,11 +33,13 @@ def mlp(
 class ResidualBlock(nn.Module):
     def __init__(self, in_channels, out_channels, downsample=False):
         super(ResidualBlock, self).__init__()
+
         stride = 1
         if downsample:
             stride = 2
             self.conv_ds = conv1x1(in_channels, out_channels, stride)
             self.bn_ds = nn.BatchNorm2d(out_channels)
+
         self.downsample = downsample
         self.bn1 = nn.BatchNorm2d(in_channels)
         self.relu = nn.ReLU(inplace=True)
@@ -61,9 +63,9 @@ class ResidualBlock(nn.Module):
         return out
 
 
-class NNetArchitecture(nn.Module):
+class ResNet(nn.Module):
     def __init__(self, game_cls, args):
-        super(NNetArchitecture, self).__init__()
+        super(ResNet, self).__init__()
         # game params
         self.channels, self.board_x, self.board_y = game_cls.observation_size()
         self.action_size = game_cls.action_size()
@@ -111,5 +113,47 @@ class NNetArchitecture(nn.Module):
         pi = self.pi_bn(pi)
         pi = torch.flatten(pi, 1)
         pi = self.pi_fc(pi)
+
+        return F.log_softmax(pi, dim=1), F.log_softmax(v, dim=1)
+
+
+class FullyConnected(nn.Module):
+    """
+    Fully connected network which operates in the same way as NNetArchitecture.
+    The fully_connected function is used to create the network, as well as the
+    policy and value heads. Forward method returns log_softmax of policy and value head.
+    """
+    def __init__(self, game_cls, args):
+        super(FullyConnected, self).__init__()
+        # get input size
+        self.input_size = sum(game_cls.observation_size())
+
+        self.input_fc = mlp(
+            self.input_size,
+            args.input_fc_layers,
+            args.input_fc_layers[-1],
+            activation=nn.ReLU
+        )
+        self.v_fc = mlp(
+            args.input_fc_layers[-1],
+            args.value_dense_layers,
+            game_cls.num_players() + 1,
+            activation=nn.Identity
+        )
+        self.pi_fc = mlp(
+            args.input_fc_layers[-1],
+            args.policy_dense_layers,
+            self.game_cls.action_size(),
+            activation=nn.Identity
+        )
+
+    def forward(self, s):
+        # s: batch_size x num_channels x board_x x board_y
+        # reshape s for input_fc
+        s = s.view(-1, self.input_size)
+
+        s = self.input_fc(s)
+        v = self.v_fc(s)
+        pi = self.pi_fc(s)
 
         return F.log_softmax(pi, dim=1), F.log_softmax(v, dim=1)

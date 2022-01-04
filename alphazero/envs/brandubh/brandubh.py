@@ -1,5 +1,3 @@
 import pyximport, numpy
 pyximport.install(setup_args={'include_dirs': numpy.get_include()})
-
-from .board import *
-
+from .fastafl import Game, display

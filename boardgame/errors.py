@@ -1,18 +1,18 @@
-class BoardGameException(Exception):
+class BoardgameError(Exception):
     pass
 
 
-class InvalidMoveError(BoardGameException):
+class LoadError(BoardgameError):
     pass
 
 
-class GameFullError(BoardGameException):
+class InvalidBoardState(LoadError):
     pass
 
 
-class TurnError(BoardGameException):
+class InvalidMoveError(BoardgameError):
     pass
 
 
-class LoadError(BoardGameException):
+class PositionError(BoardgameError):
     pass

@@ -396,7 +396,10 @@ class MainWindow(Ui_FormMainMenu):
             else:
                 args = (self.current_env, self.pit_args)
 
-            self.pit_players[i] = self.pit_players[i](*args)
+            if issubclass(self.pit_players[i], MCTSPlayer):
+                self.pit_players[i] = self.pit_players[i](*args, verbose=self.checkConsoleVerbose.isChecked())
+            else:
+                self.pit_players[i] = self.pit_players[i](*args)
 
         if hasattr(self.env_module, 'display'):
             display = self.env_module.display
@@ -682,7 +685,8 @@ class MainWindow(Ui_FormMainMenu):
             dialog.comboBox.addItems(players.keys())
 
             if self.pit_players and player_idx < len(self.pit_players):
-                used_player = self.pit_players[player_idx].__name__
+                used_player = self.pit_players[player_idx]
+                used_player = used_player.__name__ if inspect.isclass(used_player) else used_player.__class__.__name__
                 if used_player in players.keys():
                     dialog.comboBox.setCurrentText(used_player)
 
