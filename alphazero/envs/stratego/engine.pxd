@@ -19,7 +19,7 @@ cdef class Board(BaseBoard):
     cdef public list _blue_pieces_to_place
 
     cpdef void clear_pieces_to_place(self)
-    cpdef int __base_piece(self, int piece_type)
+    cpdef int _base_piece(self, int piece_type)
 
     cpdef bint _is_valid(self, Square dest_square, int piece_type)
     cpdef list legal_moves(self, tuple pieces=*, int piece_type=*)

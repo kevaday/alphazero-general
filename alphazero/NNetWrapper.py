@@ -193,7 +193,7 @@ class NNetWrapper(BaseWrapper):
             (pi_losses.avg + v_losses.avg) if isinstance(
                 self.scheduler, optim.lr_scheduler.ReduceLROnPlateau) else None
         )
-        bar.update()
+        bar.update()  # TODO: division by zero when train steps is too small (0?)
         bar.finish()
         print()
 

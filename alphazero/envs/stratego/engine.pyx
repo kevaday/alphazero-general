@@ -127,38 +127,43 @@ cdef class Board(BaseBoard):
         self._red_pieces_to_place = []
         self._blue_pieces_to_place = []
 
-    cpdef int __base_piece(self, int piece_type):
-        return piece_type if piece_type in ALL_RED_PIECES else piece_type - other_team_offset if piece_type in ALL_BLUE_PIECES else 0
+    cpdef int _base_piece(self, int piece_type):
+        return piece_type % other_team_offset
 
     cpdef bint _is_valid(self, Square dest_square, int piece_type):
-        if not self._in_bounds(dest_square):  # square must be in bounds
+        # square must be in bounds
+        if not self._in_bounds(dest_square):
             return False
 
         cdef int dest_value = self[dest_square]
-
-        return (
-            # square's not blocked
-            dest_value != tile_blocked
-            # pieces are on opposite teams
-            and self._team_colour(piece_type) != self._team_colour(dest_value)
+        # tile is empty or pieces are on opposite teams
+        return dest_value != tile_blocked and (
+            dest_value == tile_normal or piece_type > other_team_offset > dest_value or piece_type < other_team_offset < dest_value
         )
 
     cpdef list legal_moves(self, tuple pieces=(), int piece_type=0):
         cdef Square piece_square, cur_square
-        cdef int piece_square_value, team_turn
+        cdef int piece_square_value, base_piece_value, team_turn
         cdef tuple move_dir
         cdef list legals = []
 
         if self.play_phase:
             for piece_square in self._iter_pieces(pieces, piece_type):
                 piece_square_value = self[piece_square]
+                base_piece_value = self._base_piece(piece_square_value)
+
+                if base_piece_value in (piece_bomb, piece_flag):
+                    # bomb and flag can't move
+                    continue
+
                 for move_dir in DIRECTIONS:
                     cur_square = self._relative_square(piece_square, move_dir)
 
                     while self._is_valid(cur_square, piece_square_value):
                         legals.append((piece_square, cur_square))
                         # get the next square to check in this direction only if the piece is a scout
-                        if self.__base_piece(piece_square_value) == piece_scout:
+                        # and the last tile didn't have an enemy piece on it
+                        if base_piece_value == piece_scout and self[cur_square] == tile_normal:
                             cur_square = self._relative_square(cur_square, move_dir)
                         else:
                             break
@@ -178,9 +183,13 @@ cdef class Board(BaseBoard):
         return legals
 
     cpdef bint _has_legals_check(self, Square piece_square):
+        cdef int piece_square_value = self[piece_square]
+        if self._base_piece(piece_square_value) in (piece_bomb, piece_flag):
+            # bomb and flag can't move
+            return False
+
         cdef tuple move_dir
         cdef Square cur_square
-        cdef int piece_square_value = self[piece_square]
 
         for move_dir in DIRECTIONS:
             cur_square = self._relative_square(piece_square, move_dir)
@@ -201,9 +210,9 @@ cdef class Board(BaseBoard):
 
     cpdef void move(self, source, dest, bint check_turn=True, bint _check_valid=True, bint _check_win=True):
         cdef int dest_value
-        cdef int other_team_colour
         cdef int dest_piece
         cdef int source_piece
+        cdef bint dest_is_red
 
         if self.play_phase:
             if _check_valid:
@@ -213,9 +222,9 @@ cdef class Board(BaseBoard):
                     raise ValueError('Destination square must be of type Square in the play phase of the game.')
 
             dest_value = self[dest]
-            other_team_colour = self._team_colour(dest_value)
-            dest_piece = self.__base_piece(dest_value)
-            source_piece = self.__base_piece(self[source])
+            dest_is_red = dest_value < other_team_offset
+            dest_piece = self._base_piece(dest_value)
+            source_piece = self._base_piece(self[source])
 
             super(Board, self).move(source, dest, check_turn, _check_valid, _check_win)
 
@@ -223,14 +232,14 @@ cdef class Board(BaseBoard):
             if dest_value != tile_normal:
                 if dest_piece == piece_flag:
                     # one of the teams has won
-                    self._red_flag_captured = other_team_colour == RED_TEAM_COLOUR
-                    self._blue_flag_captured = other_team_colour == BLUE_TEAM_COLOUR
+                    self._red_flag_captured = dest_is_red
+                    self._blue_flag_captured = not dest_is_red
 
                 elif (dest_piece == piece_bomb and source_piece != piece_miner) or source_piece == dest_piece:
                     # both pieces are destroyed
                     self[dest] = tile_normal
                     if dest_piece == piece_bomb:
-                        self.red_exploded_bombs.append(dest) if other_team_colour == RED_TEAM_COLOUR else self.blue_exploded_bombs.append(dest)
+                        self.red_exploded_bombs.append(dest) if dest_is_red else self.blue_exploded_bombs.append(dest)
                     return
 
                 elif source_piece < dest_piece and not (source_piece == piece_spy and dest_piece == piece_marshal):
@@ -246,7 +255,7 @@ cdef class Board(BaseBoard):
                     raise errors.InvalidMoveError(
                         f"Cannot add piece {source} to the square {dest} because it's not a valid move."
                     )
-                elif self.__base_piece(source) not in MOVABLE_PIECES:
+                elif self._base_piece(source) not in MOVABLE_PIECES:
                     raise errors.InvalidMoveError(
                         f"Cannot add piece {source} to the square {dest} because it's not a valid piece."
                     )
@@ -266,7 +275,7 @@ cdef class Board(BaseBoard):
             self.num_turns += 1
 
     cpdef int to_play(self):
-        return RED_TEAM_COLOUR if super(Board, self).to_play() == 0 else BLUE_TEAM_COLOUR
+        return RED_TEAM_COLOUR + other_team_offset * super(Board, self).to_play()
 
     """
     cpdef np.ndarray get_team_mask(self):

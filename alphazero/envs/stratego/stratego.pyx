@@ -30,7 +30,7 @@ cdef tuple ALL_BLUE_PIECES = tuple((p + other_team_offset for p in ALL_RED_PIECE
 
 cdef int NUM_PLAYERS = 2
 cdef int NUM_STACKED_OBSERVATIONS = 1
-cdef int NUM_BASE_CHANNELS = 66
+cdef int NUM_BASE_CHANNELS = 30
 cdef int NUM_CHANNELS = NUM_BASE_CHANNELS * NUM_STACKED_OBSERVATIONS
 cdef int NUM_PIECES = len(ALL_RED_PIECES)
 cdef int DRAW_MOVE_COUNT = 512
@@ -42,7 +42,7 @@ cdef int ACTION_SIZE = max(
     # 1280 for width 8, height 10
     b.width * b.height * (b.width + b.height - 2)
 )
-cdef tuple OBS_SIZE = (NUM_CHANNELS, b.width, b.height)
+cdef tuple OBS_SIZE = (NUM_CHANNELS, b.height, b.width)
 
 
 cpdef int get_action(Board board, tuple move):
@@ -54,7 +54,7 @@ cpdef int get_action(Board board, tuple move):
 
     if isinstance(move[0], int):
         # phase 1 of game
-        return new_x + new_y * board.width + move[0] * board.width * board.height
+        return new_x + new_y * board.width + (move[0] - other_team_offset * super(Board, board).to_play()) * board.width * board.height
 
     else:
         # phase 2
@@ -96,7 +96,7 @@ cpdef tuple get_move(Board board, int action):
     else:
         size = board.width * board.height
         a = action % size
-        return action // size, Square(a % board.width, a // board.width)
+        return (action // size) + other_team_offset * super(Board, board).to_play(), Square(a % board.width, a // board.width)
 
 
 cpdef list _add_obs(Board b, int const_max_player, int const_max_turns):
@@ -121,7 +121,6 @@ cpdef list _add_obs(Board b, int const_max_player, int const_max_turns):
 
     # add binary planes for the locations of exploded bombs on both teams
     for bomb_square in b.red_exploded_bombs:
-        print(bomb_square)
         red_bombs[bomb_square.y, bomb_square.x] = 1.
 
     for bomb_square in b.blue_exploded_bombs:
@@ -159,7 +158,6 @@ cpdef np.ndarray _get_observation(Board board, int const_max_players, int const_
             else:
                 obs.extend(_add_obs(past[i], const_max_players, const_max_turns))
     else:
-        print(const_max_turns)
         obs = _add_obs(board, const_max_players, const_max_turns)
 
     return np.array(obs, dtype=DTYPE)
@@ -176,10 +174,6 @@ cdef class Game:  #(GameState):
     def __str__(self):
         return str(self._board) + '\n'
 
-    cpdef void display(self, int action=-1):
-        if action != -1: print(f'Action: {action}, Move: {get_move(self._board, action)}')
-        print(self._board)
-
     @property
     def player(self) -> int:
         return super(Board, self._board).to_play()
@@ -187,10 +181,6 @@ cdef class Game:  #(GameState):
     @property
     def turns(self):
         return self._board.num_turns
-
-    @staticmethod
-    cdef int _get_player_int(int player):
-        return (1, -1)[2 - player]
 
     cpdef Game clone(self):
         return Game(self._board.copy())
@@ -246,43 +236,27 @@ cdef class Game:  #(GameState):
         )
 
     cpdef list symmetries(self, np.ndarray pi):
-        cdef list syms = [None] * 8
-        cdef int i
-        cdef bint flip
-        cdef np.ndarray[np.float32_t, ndim=2] state
-        cdef np.ndarray[np.float32_t, ndim=1] new_pi
-        cdef Board new_b
+        cdef np.ndarray[DTYPE_t, ndim=2] new_state = np.fliplr(self._board._state.astype(DTYPE))
+        cdef np.ndarray[DTYPE_t, ndim=1] new_pi = np.zeros(ACTION_SIZE, dtype=DTYPE)
+        cdef Board new_b = self._board.copy()
+        cdef Square dest
+        cdef tuple new_move
 
-        for i in range(1, 5):
-            for flip in (False, True):
-                state = np.rot90(np.array(self._board._state, dtype=np.float32), i)
-                if flip:
-                    state = np.fliplr(state)
+        new_b._state = new_state
+        for action, prob in enumerate(pi):
+            move = get_move(self._board, action)
+            dest = Square(self._board.width - 1 - move[1].x, move[1].y)
 
-                new_b = self._board.copy()
-                new_b._state = state
-                new_pi = np.zeros(ACTION_SIZE, dtype=np.float32)
-                for action, prob in enumerate(pi):
-                    move = get_move(self._board, action)
-                    x = move[0].x
-                    new_x = move[1].x
-                    y = move[0].y
-                    new_y = move[1].y
+            if self._board.play_phase:
+                new_move = (Square(self._board.width - 1 - move[0].x, move[0].y), dest)
+            else:
+                new_move = (move[0], dest)
 
-                    for _ in range(i):
-                        temp_x = x
-                        temp_new_x = new_x
-                        x = self._board.width - 1 - y
-                        new_x = self._board.width - 1 - new_y
-                        y = temp_x
-                        new_y = temp_new_x
-                    if flip:
-                        x = self._board.width - 1 - x
-                        new_x = self._board.width - 1 - new_x
+            new_pi[get_action(new_b, new_move)] = prob
 
-                    new_action = get_action(new_b, (Square(x, y), Square(new_x, new_y)))
-                    new_pi[new_action] = prob
+        return [(self.clone(), pi), (Game(new_b), new_pi)]
 
-                syms[(i - 1) * 2 + int(flip)] = (Game(new_b), new_pi)
 
-        return syms
+cpdef void display(Game g, int action=-1):
+        if action != -1: print(f'Action: {action}, Move: {get_move(g._board, action)}')
+        print(g)

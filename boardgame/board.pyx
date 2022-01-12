@@ -13,7 +13,6 @@ cimport numpy as np
 
 from boardgame cimport board
 from boardgame import errors
-from copy import deepcopy
 
 np.import_array()
 
@@ -163,7 +162,7 @@ cdef class BaseBoard:
         board._all_pieces = self._all_pieces
         board._empty_square = self._empty_square
         board.use_load_whitespace = self.use_load_whitespace
-        board.teams = deepcopy(self.teams)
+        board.teams = self.teams
         return board
 
     def __deepcopy__(self, memodict):
@@ -198,10 +197,13 @@ cdef class BaseBoard:
     cpdef bint has_legal_moves(self, tuple pieces=(), int piece_type=0):
         cdef Square piece_square
         cdef tuple piece_types = ()
+        cdef tuple pos
+        cdef int piece
 
         if pieces:
             for piece_square in pieces:
-                if self[piece_square] in self._all_pieces and self._has_legals_check(piece_square):
+                #if self[piece_square] in self._all_pieces and self._has_legals_check(piece_square):
+                if self._has_legals_check(piece_square):  # faster
                     return True
 
         if piece_type != 0:
@@ -210,9 +212,11 @@ cdef class BaseBoard:
             piece_types = self._all_pieces
 
         if piece_types:
-            for piece_square in self.get_squares(piece_types):
-                if self._has_legals_check(piece_square):
-                    return True
+            # re-wrote self.get_squares for speed
+            for piece in piece_types:
+                for pos in zip(*np.where(self._state == piece)):
+                    if self._has_legals_check(Square(*reversed(pos))):
+                        return True
 
         return False
 
@@ -260,7 +264,7 @@ cdef class BaseBoard:
         return b
 
     cpdef Square _relative_square(self, Square source, tuple direction):
-        return source + Square(*direction)
+        return Square(source.x + direction[0], source.y + direction[1])
 
     cpdef list _surrounding_squares(self, Square source):
         cdef tuple check_dir
@@ -302,16 +306,14 @@ cdef class BaseBoard:
         return 0
 
     cpdef void add_piece(self, Square square, int piece, bint replace=False, _check_valid=True):
-        if _check_valid and piece not in self._all_pieces:
-            raise ValueError(f'{piece} is not a valid piece to add to the board.')
-
-        cdef int dest_value = self[square]
-
-        if _check_valid and not replace and dest_value in self._all_pieces:
-            raise errors.PositionError(
-                f"Can't set square {square} to piece {piece} because argument replace is set to False, and the square "
-                f"contains the piece {dest_value}."
-            )
+        if _check_valid:
+            if piece not in self._all_pieces:
+                raise ValueError(f'{piece} is not a valid piece to add to the board.')
+            if not replace and self[square] in self._all_pieces:
+                raise errors.PositionError(
+                    f"Can't set square {square} to piece {piece} because argument replace is set to False, and the square "
+                    f"contains the piece {self[square]}."
+                )
 
         self[square] = piece
 
@@ -320,11 +322,8 @@ cdef class BaseBoard:
         if raise_no_piece and dest_value not in self._all_pieces:
             raise errors.PositionError(f"There's no piece on the square {square}. Found tile {dest_value}")
 
-        cdef int new_value = self._empty_square
-        cdef int piece = dest_value
-
-        self[square] = new_value
-        return piece
+        self[square] = self._empty_square
+        return dest_value
 
     cpdef np.ndarray get_mask(self, tuple piece_types):
         cdef np.ndarray[np.uint8_t, ndim=2, cast=True] mask = self._state == piece_types[0]
@@ -334,7 +333,11 @@ cdef class BaseBoard:
         return mask
 
     cpdef list get_squares(self, tuple piece_types):
-        return [Square(*reversed(pos)) for pos in zip(*np.where(self.get_mask(piece_types)))]
+        cdef list squares = []
+        cdef tuple pos
+        for pos in zip(*np.where(self.get_mask(piece_types))):
+            squares.append(Square(*reversed(pos)))
+        return squares
 
     cpdef int to_play(self):
         return self.num_turns % len(self.teams)

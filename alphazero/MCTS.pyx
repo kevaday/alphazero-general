@@ -74,10 +74,7 @@ cdef class Node:
     #    return rebuild_node, ([n.__reduce__() for n in self._children], self.a, self.cpuct, self._players, self.e, self.q, self.n, self.p, self.player)
 
     cdef void add_children(self, np.ndarray v):
-        cdef Py_ssize_t a
-        for a in range(len(v)):
-            if v[a] == 1:
-                self._children.append(Node(a, self.cpuct, self._players))
+        self._children.extend([Node(a, self.cpuct, self._players) for a, valid in enumerate(v) if valid])
         # shuffle children
         np.random.shuffle(self._children)
 
@@ -90,12 +87,12 @@ cdef class Node:
         return (fpu_value if self.n == 0 else self.q) + self.cpuct * self.p * sqrtParentN / (1 + self.n)
 
     cdef Node best_child(self, float fpu_reduction):
+        cdef Node c
         cdef float seen_policy = sum([c.p for c in self._children if c.n > 0])
         cdef float fpu_value = self.v - fpu_reduction * sqrt(seen_policy)
         cdef float curBest = -float('inf')
         cdef float sqrtN = sqrt(self.n)
         cdef float uct
-        cdef Node c
         child = None
 
         for c in self._children:
@@ -168,10 +165,9 @@ cdef class MCTS:
             self.process_results(leaf, v, p, add_root_noise, add_root_temp)
 
     cpdef void raw_search(self, object gs, int sims, bint add_root_noise, bint add_root_temp):
-        cdef Py_ssize_t value_size = gs.num_players() + 1
         cdef Py_ssize_t policy_size = gs.action_size()
-        cdef float[:] v = np.full((value_size,), 1 / value_size, dtype=np.float32)
-        cdef float[:] p = np.full((policy_size,), 1 / policy_size, dtype=np.float32)
+        cdef float[:] v = np.zeros(gs.num_players() + 1, dtype=np.float32)  #np.full((value_size,), 1 / value_size, dtype=np.float32)
+        cdef float[:] p = np.full(policy_size, 1, dtype=np.float32)
         self.max_depth = 0
 
         for _ in range(sims):
@@ -231,7 +227,8 @@ cdef class MCTS:
             value = np.array(self._curnode.e, dtype=np.float32)
         else:
             # reconstruct valid moves based on children of current node
-            valids = np.zeros((gs.action_size(),), dtype=np.float32)
+            # instead of recalculating with gs.valid_moves() - expensive
+            valids = np.zeros(gs.action_size(), dtype=np.float32)
             for c in self._curnode._children:
                 valids[c.a] = 1
 
@@ -242,7 +239,7 @@ cdef class MCTS:
             if self._curnode == self._root:
                 # add root temperature
                 if add_root_temp:
-                    pi = (pi / np.sum(pi)) ** (1.0 / self.root_temp)
+                    pi = np.asarray(pi) ** (1.0 / self.root_temp)
                     # renormalize
                     pi /= np.sum(pi)
 
@@ -268,7 +265,7 @@ cdef class MCTS:
                 # are better than bad values close to root
                 discount = 2 - discount
             elif v == _DRAW_VALUE:
-                # don't discount value in the rare case that it is a draw (0.5)
+                # don't discount value in the rare case that it is a precise draw (0.5)
                 discount = 1
 
             # scale value to the range [-1, 1]
@@ -276,7 +273,7 @@ cdef class MCTS:
 
             self._curnode.q = (self._curnode.q * self._curnode.n + v * discount) / (self._curnode.n + 1)
             if self._curnode.n == 0:
-                self._curnode.v = self._get_value(value, self._curnode.player, num_players) #  * 2 - 1
+                self._curnode.v = self._get_value(value, self._curnode.player, num_players)  # * 2 - 1
             self._curnode.n += 1
             self._curnode = parent
             i += 1
