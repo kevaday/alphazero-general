@@ -42,14 +42,7 @@ args = get_args(
     value_dense_layers=[2048, 128],
     policy_dense_layers=[2048]
 )
-
-
-def raw_mcts_player():
-    return RawMCTSPlayer(Game, args)
-
-
 args.scheduler_args.milestones = [75, 100]
-args.baselineTester = raw_mcts_player
 
 
 if __name__ == "__main__":

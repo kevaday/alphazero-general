@@ -250,7 +250,9 @@ class MainWindow(Ui_FormMainMenu):
                 self.lblTrainIterTime.setText('Train Time: ' + str(self.coach.train_net.elapsed_time))
                 self.lblTrainTimeRemaining.setText('Est. Time Remaining: ' + str(self.coach.train_net.eta))
 
-            elif self.coach.state == TrainState.COMPARE_PAST or self.coach.state == TrainState.COMPARE_BASELINE:
+            elif (
+                self.coach.state == TrainState.COMPARE_PAST or self.coach.state == TrainState.COMPARE_BASELINE
+            ) and self.coach.arena:
                 self.lblTrainNumGames.setText(
                     f'Games Played: {self.coach.arena.games_played}/{self.coach.arena.total_games}'
                 )
@@ -341,8 +343,12 @@ class MainWindow(Ui_FormMainMenu):
 
         if self.coach.state == TrainState.STANDBY:
             self.train_ended_counter += 1
+        else:
+            self.train_ended_counter = 0
 
         if self.train_ended_counter * self.train_timer.interval() >= 2:
+            # TODO: when a new iteration starts after saving samples, this is triggered while training is still running
+            # (only happens when using model in self-play instead of warmup)
             self.stop_train()
 
     def start_pit_clicked(self):

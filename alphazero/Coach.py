@@ -258,15 +258,12 @@ class Coach:
                     self.killSelfPlayAgents()
                     if self.stop_train.is_set():
                         break
+
                 self.train(self.model_iter)
                 if self.stop_train.is_set():
                     break
 
                 if self.args.compareWithBaseline and (self.model_iter - 1) % self.args.baselineCompareFreq == 0:
-                    #if self.model_iter == 1:
-                    #    print(
-                    #        'Note: Comparisons against the baseline do not use monte carlo tree search.'
-                    #    )
                     self.compareToBaseline(self.model_iter)
                     if self.stop_train.is_set():
                         break
@@ -404,18 +401,17 @@ class Coach:
 
     @_set_state(TrainState.KILL_AGENTS)
     def killSelfPlayAgents(self):
+        # clear queues to prevent deadlocking
         for _ in range(self.ready_queue.qsize()):
             try:
                 self.ready_queue.get_nowait()
             except Empty:
                 break
-
         for _ in range(self.file_queue.qsize()):
             try:
                 self.file_queue.get_nowait()
             except Empty:
                 break
-
         for _ in range(self.result_queue.qsize()):
             try:
                 self.result_queue.get_nowait()
@@ -524,7 +520,7 @@ class Coach:
             [add_tensor_dataset(i, datasets) for i in range(max(1, iteration - current_history_size), iteration + 1)]
             self.loss_pi, self.loss_v = train_data(datasets)
 
-        self.writer.add_scalar('loss/policy', self.loss_pi, iteration)
+        self.writer.add_scalar('loss/policy', self.loss_pi, iteration)  # TODO: policy loss not showing up in tensorboard
         self.writer.add_scalar('loss/value', self.loss_v, iteration)
         self.writer.add_scalar('loss/total', self.loss_pi + self.loss_v, iteration)
 
@@ -550,11 +546,13 @@ class Coach:
 
         players = [nplayer] + [pplayer] * (self.game_cls.num_players() - 1)
         self.arena = Arena(players, self.game_cls, use_batched_mcts=self.args.arenaBatched, args=self.args)
-        wins, draws, winrates = self.arena.play_games(self.args.arenaCompare)
+        wins, draws, _ = self.arena.play_games(self.args.arenaCompare)
         if self.stop_train.is_set(): return
-        winrate = winrates[0]
+        winrate, stdev = self.arena.get_winrate(0)
 
         print(f'NEW/PAST WINS : {wins[0]} / {sum(wins[1:])} ; DRAWS : {draws}\n')
+        print(f'NEW MODEL WINRATE : {round(winrate, 3)} +/- {round(stdev, 3)} '
+              f'(in range {round(winrate - stdev, 3)} - {round(winrate + stdev, 3)})')
         self.writer.add_scalar('win_rate/past', winrate, model_iter)
 
         ### Model gating ###
@@ -591,7 +589,9 @@ class Coach:
         self.arena = Arena(players, self.game_cls, use_batched_mcts=can_process, args=self.args)
         wins, draws, winrates = self.arena.play_games(self.args.arenaCompareBaseline)
         if self.stop_train.is_set(): return
-        winrate = winrates[0]
+        winrate, stdev = self.arena.get_winrate(0)
 
         print(f'NEW/BASELINE WINS : {wins[0]} / {sum(wins[1:])} ; DRAWS : {draws}\n')
+        print(f'NEW MODEL WINRATE : {round(winrate, 3)} +/- {round(stdev, 3)} '
+              f'(in range {round(winrate - stdev, 3)} - {round(winrate + stdev, 3)})')
         self.writer.add_scalar('win_rate/baseline', winrate, iteration)

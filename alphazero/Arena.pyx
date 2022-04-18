@@ -7,6 +7,7 @@ from alphazero.SelfPlayAgent import SelfPlayAgent
 from alphazero.pytorch_classification.utils import Bar, AverageMeter
 from alphazero.utils import dotdict, get_game_results
 
+from statistics import mean, stdev
 from typing import Callable, List, Tuple, Optional
 from enum import Enum
 from queue import Empty
@@ -109,7 +110,7 @@ class Arena:
         self.eta = 0
         self.game_state = None
         self.draws = 0
-        self.winrates = []
+        self.winrates = [[]] * num_players
         self._agents = []
         self.stop_event = mp.Event()
         self.pause_event = mp.Event()
@@ -133,7 +134,7 @@ class Arena:
 
     def __reset_counts(self):
         self.draws = 0
-        self.winrates = []
+        self.winrates = [[]] * len(self.__players)
         [player.reset_wins() for player in self.players]
 
     def __update_winrates(self):
@@ -143,7 +144,8 @@ class Arena:
         [player.update_winrate(
             self.draws if self.args.use_draws_for_winrate else 0, num_games
         ) for player in self.players]
-        self.winrates = [player.winrate for player in self.__sorted_players()]
+
+        [self.winrates[player.index].append(player.winrate) for player in self.players]
 
     def __sorted_players(self):
         return iter(sorted(self.players, key=lambda p: p.index))
@@ -226,6 +228,7 @@ class Arena:
                 random.shuffle(players)
 
         if self.use_batched_mcts:
+            # TODO: fix batched arena possibly taking up to ~10x longer than self play
             self.args.gamesPerIteration = num
             self._agents = []
             policy_tensors = []
@@ -312,7 +315,7 @@ class Arena:
                 bar.suffix = '({eps}/{maxeps}) Winrates: {wr} | Eps Time: {et:.3f}s | Total: {total:} | ETA: {eta:}' \
                     .format(
                         eps=size, maxeps=num, et=sample_time.avg, total=bar.elapsed_td, eta=bar.eta_td,
-                        wr=[round(w, 2) for w in self.winrates]
+                        wr=[round(w, 2) for w in list(zip(*self.winrates))[-1]]  # TODO: winrates for both players are the same
                     )
                 bar.goto(size)
 
@@ -325,18 +328,17 @@ class Arena:
             bar.update()
             bar.finish()
 
+            # empty queues to prevent deadlock
             for _ in range(ready_queue.qsize()):
                 try:
                     ready_queue.get_nowait()
                 except Empty:
                     break
-
             for _ in range(result_queue.qsize()):
                 try:
                     result_queue.get_nowait()
                 except Empty:
                     break
-
             for queue in batch_queues:
                 for _ in range(queue.qsize()):
                     try:
@@ -344,6 +346,7 @@ class Arena:
                     except Empty:
                         break
 
+            # wait for all processes to finish
             for agent in self._agents:
                 agent.join()
                 del policy_tensors[0]
@@ -377,7 +380,7 @@ class Arena:
                 bar.suffix = '({eps}/{maxeps}) Winrates: {wr} | Eps Time: {et:.3f}s | Total: {total:} | ETA: {eta:}' \
                     .format(
                         eps=eps, maxeps=num, et=eps_time.avg, total=bar.elapsed_td, eta=bar.eta_td,
-                        wr=[round(w, 2) for w in self.winrates]
+                        wr=[round(w, 2) for w in list(zip(*self.winrates))[-1]]
                     )
                 bar.next()
                 self.games_played = eps
@@ -390,4 +393,13 @@ class Arena:
 
         wins = [player.wins for player in self.__sorted_players()]
 
-        return wins, self.draws, self.winrates
+        return wins, self.draws, list(zip(*self.winrates))[-1]
+
+    def get_winrate(self, player: int) -> Tuple[float, float]:
+        """Returns the winrate of the given player and its standard deviation."""
+        # TODO: test this
+        if not self.winrates:
+            raise ValueError('No games have been played yet.')
+
+        avg = mean(self.winrates[player])
+        return avg, stdev(self.winrates[player], avg)

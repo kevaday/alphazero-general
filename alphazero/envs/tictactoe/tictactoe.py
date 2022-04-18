@@ -57,14 +57,14 @@ class Game(GameState):
         for x, y in self._board.get_legal_moves():
             valids[self._board.n * x + y] = 1
 
-        return np.array(valids, dtype=np.intc)
+        return np.array(valids, dtype=np.uint8)
 
     def play_action(self, action: int) -> None:
         move = (action // self._board.n, action % self._board.n)
         self._board.execute_move(move, self._player_range())
         self._update_turn()
 
-    def win_state(self) -> Tuple[bool, ...]:
+    def win_state(self):
         result = [False] * (NUM_PLAYERS + 1)
         player = self._player_range()
 
@@ -75,10 +75,10 @@ class Game(GameState):
         elif not self._board.has_legal_moves():
             result[-1] = True
 
-        return tuple(result)
+        return np.array(result, dtype=np.uint8)
 
     def observation(self):
-        return np.expand_dims(np.asarray(self._board.pieces), axis=0)
+        return np.expand_dims(np.asarray(self._board.pieces), axis=0).astype(np.float32)
 
     def symmetries(self, pi: np.ndarray) -> List[Tuple[Any, int]]:
         # mirror, rotational

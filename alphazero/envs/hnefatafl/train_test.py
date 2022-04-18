@@ -52,7 +52,6 @@ args = get_args(
     policy_dense_layers=[32]
 )
 args.scheduler_args.milestones = [75, 150]
-args.baselineTester = lambda: RawMCTSPlayer(Game, args)
 
 if __name__ == "__main__":
     nnet = nn(Game, args)
