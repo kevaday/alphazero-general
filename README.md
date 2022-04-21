@@ -68,6 +68,8 @@ As a general guideline, game engine files/other potential bottlenecks should be 
 
 **`cpuct`:** A constant for balancing exploration vs exploitation in the MCTS algorithm. A higher number promotes more exploration of new actions whereas a lower one promotes exploitation of previously known good actions. A normal range is between 1-4, depending on the environment; a game with less possible moves on each turn would need a lower CPUCT.
 
+**`fpu_reduction`:** "First Play Urgency" reduction decreases the initialization Q value of an unvisited node by this factor, must be in the range `[-1, 1]`. The closer this value is to 1, it discourages MCTS to explore unvisited nodes further, which (hopefully) allows it to explore paths that are more familiar. If this is set to 0, no reduction is done and unvisited nodes inherit their parent's Q value. Closer to a value of -1 (not recommended to go below 0), unvisited nodes become more prefered which can lead to more exploration.
+
 **`num_channels`:** The number of channels each ResNet convolution block has.
 
 **`depth`:** The number of stacked ResNet blocks to use in the network.
@@ -78,6 +80,8 @@ As a general guideline, game engine files/other potential bottlenecks should be 
 
 ## Results
 ### Connect Four
+`envs/connect4`
+
 AlphaZero was trained on the `connect4` env for 208 iterations in the past, but unfortunately the specific args used to train it were lost. The args were quite close to the current default for the connect4 env (but with lower batch size and games/iteration, hence the large number of iterations), therefore the trained model can still be loaded with some trial and error.
 
 This training instance was very successful, and was unbeatable by every human trial. Here are the Tensorboard logs:
@@ -99,4 +103,10 @@ For unknown reasons, it does not perform as well against the baseline tester as 
 The model for the lateset iteration (35) of this instance can be downloaded [here](https://drive.google.com/file/d/1goGnOWeQY2LmWounB-FPPoSH7ZdCg59X/view?usp=sharing).
 
 ### Viking Chess - Brandubh
+`envs/brandubh`
 
+The tensorboard logs have been corrupted for the best trained instance, therefore it cannot be included here. It was trained for 48 iterations with the default args included in the GUI (`AlphaZeroGUI/args/brandubh.json`), and achieved human-level results when testing.
+
+However, the model does have a strange tendency to disregard obvious opportunities on occasion such as a victory in one move or blocking a defeat. Also, the game length seems to even out around 25 moves - despite the players' nearly even win rate - instead of increasing to the maximum as expected. This is being investigated, but it is either due to inappropriate hyperparameters, or a bug in the MCTS code regarding recent changes.
+
+Iteration 48 of the model can be downloaded [here](https://drive.google.com/file/d/1rv9fiFQRUVBv-4PBkfmawtRm3wqAM67H/view?usp=sharing).
