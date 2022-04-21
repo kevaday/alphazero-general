@@ -22,18 +22,44 @@ You may join the [Discord server](https://discord.gg/MVaHwGZpRC) if you wish to 
 ## Getting Started
 ### Install required packages
 Make sure you have Python 3 installed. Then run:
+
 ```pip3 install -r requirements.txt```
 
+### GUI (work-in-progress)
+![image](https://user-images.githubusercontent.com/28303167/164362451-01590045-5070-45a1-8989-ab70e364b19f.png)
+
+AlphaZeroGUI, built using PyQT5, is intended to simplify the training, hyperparameter selection, and deployment/inference processes as opposed to modifying different files and running in the command line. It can be run with the following command:
+
+`python -m AlphaZeroGUI.main`
+
+After that, the controls are generally intuitive. Default/saved arguments can be loaded, the environment can be selected (see section ***Create your own game*** for implementing environment for GUI), arguments can be edited/created, and tensorboard can be opened. Simple training stats are shown on the left side, and the progress is shown at the bottom.
+
+![image](https://user-images.githubusercontent.com/28303167/164365609-30e374a9-0b82-46fd-b3c1-ac8155f24d8c.png)
+
+At the top left, the Arena tab can be toggled as seen above. Here, a separate set of args & env can be loaded and the type of players can be selected. For example, in the above image the brandubh environment was loaded and an MCTS Player with a model is pitted against a human player.
+
+For now, Arena is still displayed in the console, but eventually there will be support for each environment to implement its own graphical interface to play games (agent-agent, agent-player, player-player).
+
 ### Try one of the existing examples
-1. Adjust the hyperparameters in one of the examples to your preference (path is ```alphazero/envs/<env name>/train.py```). Take a look at Coach.py where the default arguments are stored to see the available options. For example, edit ```alphazero/envs/connect4/train.py```.
-2. After that, you can start training AlphaZero on your chosen environment by running the following:
+1. Adjust the hyperparameters in one of the examples to your preference (in the GUI editor, or path is ```alphazero/envs/<env name>/train.py```). Take a look at Coach.py where the default arguments are stored to see the available options. For example, edit ```alphazero/envs/connect4/train.py```.
+
+
+2. After that, you can start training AlphaZero on your chosen environment by pressing the 'play' button in the GUI, or running the following in the console:
+
 ```python3 -m alphazero.envs.<env name>.train```
+
 Make sure that your working directory is the root of the repo.
-3. You can observe how training is progressing from the console output, or you can also run tensorboard for a visual representation. To start tensorboard, run:
+
+3. You can observe how training is progressing in the GUI, from the console output, or you can also run tensorboard for a visual representation. To start tensorboard in the console, run:
+
 ```tensorboard --logdir ./runs```
+
 also from the project root. `runs` is the default directory for tensorboard data, but it can be changed in the hyperparameters.
-4. Once you have trained a model and want to test it, either against itself or yourself, change ```alphazero/pit.py``` (or ```alphazero/envs/<env name>/pit.py```) to your needs and run it with:
+
+4. Once you have trained a model and want to test it, either against itself or yourself, use the Arena tab in the GUI as described above, or in console you must change ```alphazero/pit.py``` (or ```alphazero/envs/<env name>/pit.py```) to your needs and run it with:
+
 ```python3 -m alphazero.pit```
+
 (once again, this will be easier to accomplish in future updates). You may also modify `roundrobin.py` to run a tournament with different iterations of models to rank them using a rating system.
 
 ### Create your own game to train on
