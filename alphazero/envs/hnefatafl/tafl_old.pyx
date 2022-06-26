@@ -26,8 +26,8 @@ NUM_BASE_CHANNELS = 5
 NUM_CHANNELS = NUM_BASE_CHANNELS * NUM_STACKED_OBSERVATIONS
 
 b = _get_board()
-ACTION_SIZE = b.width * b.height * (b.width + b.height - 2)
-OBS_SIZE = (NUM_CHANNELS, b.width, b.height)
+ACTION_SIZE = b.board_width * b.board_height * (b.board_width + b.board_height - 2)
+OBS_SIZE = (NUM_CHANNELS, b.board_width, b.board_height)
 del b
 
 DRAW_MOVE_COUNT = 800
@@ -42,18 +42,18 @@ def _board_to_numpy(board: Board) -> np.ndarray:
 
 
 def get_move(board: Board, action: int) -> Move:
-    size = (board.width + board.height - 2)
+    size = (board.board_width + board.board_height - 2)
     move_type = action % size
     a = action // size
-    start_x = a % board.width
-    start_y = a // board.width
+    start_x = a % board.board_width
+    start_y = a // board.board_width
 
-    if move_type < board.height - 1:
+    if move_type < board.board_height - 1:
         new_x = start_x
         new_y = move_type
         if move_type >= start_y: new_y += 1
     else:
-        new_x = move_type - board.height + 1
+        new_x = move_type - board.board_height + 1
         if new_x >= start_x: new_x += 1
         new_y = start_y
 
@@ -67,10 +67,10 @@ def get_action(board: Board, move: Move) -> int:
     if move.is_vertical:
         move_type = new_y if new_y < move.tile.y else new_y - 1
     else:
-        move_type = board.height + new_x - 1
+        move_type = board.board_height + new_x - 1
         if new_x >= move.tile.x: move_type -= 1
 
-    return (board.width + board.height - 2) * (move.tile.x + move.tile.y * board.width) + move_type
+    return (board.board_width + board.board_height - 2) * (move.tile.x + move.tile.y * board.board_width) + move_type
 
 
 def _get_observation(board: Board, const_max_player: int, const_max_turns: int, past_obs: int = 1):
@@ -92,7 +92,7 @@ def _get_observation(board: Board, const_max_player: int, const_max_turns: int, 
         obs.extend([black, white, king, turn_colour, turn_number])
 
     def add_empty():
-        obs.extend([[[0]*board.width]*board.height]*NUM_BASE_CHANNELS)
+        obs.extend([[[0] * board.board_width] * board.board_height] * NUM_BASE_CHANNELS)
 
     if board._store_past_states:
         past = board._past_states.copy()
@@ -225,13 +225,13 @@ class Game(GameState):
                     for _ in range(i):
                         temp_x = x
                         temp_new_x = new_x
-                        x = self._board.width - 1 - y
-                        new_x = self._board.width - 1 - new_y
+                        x = self._board.board_width - 1 - y
+                        new_x = self._board.board_width - 1 - new_y
                         y = temp_x
                         new_y = temp_new_x
                     if flip:
-                        x = self._board.width - 1 - x
-                        new_x = self._board.width - 1 - new_x
+                        x = self._board.board_width - 1 - x
+                        new_x = self._board.board_width - 1 - new_x
 
                     move = Move(new_b, x, y, new_x, new_y)
                     new_action = get_action(new_b, move)

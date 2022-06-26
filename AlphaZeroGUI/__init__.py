@@ -8,5 +8,3 @@ ALPHAZERO_ROOT = Path('alphazero')
 ENVS_DIR = ALPHAZERO_ROOT / 'envs'
 GENERIC_PLAYERS_MODULE = 'GenericPlayers'
 PLAYERS_MODULE = 'players'
-
-CALLABLE_PREFIX = '__CALLABLE__'

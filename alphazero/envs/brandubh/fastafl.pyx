@@ -41,6 +41,8 @@ cdef int ACTION_SIZE = b.width * b.height * (b.width + b.height - 2)
 cdef tuple OBS_SIZE = (NUM_CHANNELS, b.width, b.height)
 
 cdef int DRAW_MOVE_COUNT = 100
+cdef int NUM_BLACK_PIECES = np.sum(b._state == 2)
+cdef int NUM_WHITE_PIECES = np.sum(b._state == 1)
 
 
 cpdef tuple get_move(Board board, int action):
@@ -118,23 +120,24 @@ cpdef np.ndarray _get_observation(Board board, int const_max_players, int const_
 
     return np.array(obs, dtype=np.float32)
 
-
-cdef class Game:#(GameState):
+cdef class Game:  #(GameState):
     cdef public Board _board
     cdef public int _player
     cdef public int _turns
-    
+    cdef public int last_action
+
     def __init__(self, _board=None):
         self._board = _board or _get_board()
         self._player = 0
         self._turns = 0
+        self.last_action = -1
 
     def __eq__(self, other: 'Game') -> bool:
         return self.__dict__ == other.__dict__
 
     def __str__(self):
         return str(self._board) + '\n'
-    
+
     @property
     def player(self) -> int:
         return self._player
@@ -143,14 +146,11 @@ cdef class Game:#(GameState):
     def turns(self):
         return self._turns
 
-    @staticmethod
-    cdef int _get_player_int(int player):
-        return (1, -1)[2 - player]
-
     cpdef Game clone(self):
         cdef Game g = Game(self._board.copy())
         g._player = self._player
         g._turns = self.turns
+        g.last_action = self.last_action
         return g
 
     @staticmethod
@@ -164,7 +164,7 @@ cdef class Game:#(GameState):
     @staticmethod
     def observation_size():
         return OBS_SIZE
-    
+
     cpdef int _next_player(self, int player, int turns=1):
         return (player + turns) % Game.num_players()
 
@@ -183,10 +183,10 @@ cdef class Game:#(GameState):
         return np.array(valids, dtype=np.uint8)
 
     cpdef void play_action(self, int action):
+        self.last_action = action
         cdef tuple move = get_move(self._board, action)
         self._board.move(move[0], move[1], check_turn=False, _check_valid=False, _check_win=False)
         self._update_turn()
-        
 
     cpdef np.ndarray win_state(self):
         cdef np.ndarray[dtype=np.uint8_t, ndim=1] result = np.zeros(NUM_PLAYERS + 1, dtype=np.uint8)
@@ -255,13 +255,17 @@ cdef class Game:#(GameState):
 
         return syms
 
-    """
-    cpdef int crude_value(self):
-        cdef int[:] result = self.win_state()
-        white_pieces = len(list(filter(lambda p: p.is_white, self._board.pieces)))
-        black_pieces = len(list(filter(lambda p: p.is_black, self._board.pieces)))
-        return self.player * (1000 * result[1] + black_pieces - white_pieces)
-    """
+    def crude_value(self) -> int:
+        """Returns a heuristic value for the current state of the game.
+        Closer to 0 is better for white, closer to 1 is better for black.
+        """
+        result = self.win_state()
+        white_pieces = np.sum(self._board._state == 1)
+        black_pieces = np.sum(self._board._state == 2)
+        return 0.5 + (
+                (1, -1)[self.player] * (- result[result.size - 1] * 10 - self.turns / DRAW_MOVE_COUNT)
+                + black_pieces - white_pieces + 100 * (result[0] - result[1])
+        ) / (100 + (NUM_BLACK_PIECES, NUM_WHITE_PIECES)[self.player])
 
 
 cpdef void display(Game state, int action=-1):

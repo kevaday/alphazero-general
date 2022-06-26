@@ -123,11 +123,13 @@ cdef class Game:#(GameState):
     cdef public Board _board
     cdef public int _player
     cdef public int _turns
+    cdef public int last_action
     
     def __init__(self, _board=None):
         self._board = _board or _get_board()
         self._player = 0
         self._turns = 0
+        self.last_action = -1
 
     def __eq__(self, other: 'Game') -> bool:
         return self.__dict__ == other.__dict__
@@ -151,6 +153,7 @@ cdef class Game:#(GameState):
         cdef Game g = Game(self._board.copy())
         g._player = self._player
         g._turns = self.turns
+        g.last_action = self.last_action
         return g
 
     @staticmethod
@@ -183,10 +186,10 @@ cdef class Game:#(GameState):
         return np.array(valids, dtype=np.uint8)
 
     cpdef void play_action(self, int action):
+        self.last_action = action
         cdef tuple move = get_move(self._board, action)
         self._board.move(move[0], move[1], check_turn=False, _check_valid=False, _check_win=False)
         self._update_turn()
-        
 
     cpdef np.ndarray win_state(self):
         cdef np.ndarray[dtype=np.uint8_t, ndim=1] result = np.zeros(NUM_PLAYERS + 1, dtype=np.uint8)
@@ -255,13 +258,16 @@ cdef class Game:#(GameState):
 
         return syms
 
-    """
-    cpdef int crude_value(self):
-        cdef int[:] result = self.win_state()
+    def crude_value(self) -> int:
+        result = self.win_state()
         white_pieces = len(list(filter(lambda p: p.is_white, self._board.pieces)))
         black_pieces = len(list(filter(lambda p: p.is_black, self._board.pieces)))
-        return self.player * (1000 * result[1] + black_pieces - white_pieces)
-    """
+        return (1, -1)[2 - self.player] * (
+                1000 * (result[0] - result[1])
+                + black_pieces - white_pieces
+                - result[result.size - 1] * 100
+                - self.turns
+        )
 
 
 cpdef void display(Game state, int action=-1):

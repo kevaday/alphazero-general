@@ -341,3 +341,6 @@ cdef class BaseBoard:
 
     cpdef int to_play(self):
         return self.num_turns % len(self.teams)
+
+    cpdef bint is_turn(self, Square square):
+        return self[square] in self._get_team(self.to_play())

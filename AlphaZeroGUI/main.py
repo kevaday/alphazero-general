@@ -1,15 +1,19 @@
-# This Python file uses the following encoding: utf-8
 from PySide2.QtWidgets import QApplication, QMessageBox, QInputDialog, QTableWidgetItem, QLineEdit
 from PySide2.QtGui import QFont
 from PySide2.QtCore import Qt, QTimer
-from AlphaZeroGUI import ARGS_DIR, ENVS_DIR, CALLABLE_PREFIX, PLAYERS_MODULE, GENERIC_PLAYERS_MODULE, ALPHAZERO_ROOT
+from AlphaZeroGUI import ARGS_DIR, ENVS_DIR, PLAYERS_MODULE, GENERIC_PLAYERS_MODULE, ALPHAZERO_ROOT
 from AlphaZeroGUI._gui import Ui_FormMainMenu, Ui_DialogEditArgs, Ui_DialogCombo
+from AlphaZeroGUI.CustomGUI import CustomGUI, MCTSEvaluator
 from alphazero.Coach import DEFAULT_ARGS, Coach, TrainState
 from alphazero.Arena import Arena, ArenaState
+from alphazero.Game import GameState
 from alphazero.GenericPlayers import BasePlayer
 from alphazero.NNetWrapper import NNetWrapper
 from alphazero.utils import dotdict
+from alphazero import CALLABLE_PREFIX
 from tensorboard import program
+from queue import Queue
+from functools import partial
 from pathlib import Path
 from typing import Callable
 
@@ -17,15 +21,14 @@ from typing import Callable
 from torch.optim import *
 from torch.optim.lr_scheduler import *
 from alphazero.GenericPlayers import *
-from alphazero.utils import default_temp_scaling
+from alphazero.utils import default_temp_scaling, const_temp_scaling
 
-import sys
 import os
+import sys
 import json
 import errno
 import inspect
 import threading
-import concurrent.futures
 import webbrowser
 
 from pyximport import install as pyxinstall
@@ -34,6 +37,10 @@ from numpy import get_include
 pyxinstall(setup_args={'include_dirs': get_include()})
 
 ERROR_INVALID_NAME = 123
+AUTO_END_TRAIN_TIME = 2
+CUSTOM_GUI_UPDATE_INTERVAL = 33  # 33.33ms = 30fps
+GUI_MODULE_NAME = 'gui'
+EVAL_MAX_RUN_TIME = 10
 
 
 def show_dialog(txt: str, parent, title: str = None, error=False, modal=True):
@@ -89,6 +96,57 @@ def is_pathname_valid(pathname: str) -> bool:
         return True
 
 
+class _CustomGUIPlayerWrapper:
+    SENTINEL = object()
+
+    def __init__(self, player: BasePlayer, action_queue: Queue,
+                 on_play_called: Callable[[BasePlayer, GameState], None]):
+        self.player = player
+        self.__action_q = action_queue
+        self.on_play_called = on_play_called
+
+        # Inherit methods from player_cls, except for the ones we override
+        self.overrides = [method_name for method_name in dir(self) if
+                          not method_name.startswith(f'_{self.__class__.__name__}__')
+                          and callable(getattr(self, method_name))]
+        """
+        for method_name in dir(player_cls):
+            if not method_name.startswith(f'_{player_cls.__name__}__') and method_name not in overrides:
+                method = getattr(player_cls, method_name)
+                if callable(method):
+                    setattr(self, method_name, partial(method, self))
+        """
+
+    def __getattr__(self, item):
+        if item in self.overrides:
+            return getattr(self, item)
+        else:
+            return getattr(self.player, item)
+
+    def __call__(self, *args, **kwargs):
+        return self.play(*args, **kwargs)
+
+    def play(self, state: GameState) -> int:
+        self.on_play_called(self, state)
+        if self.is_human():
+            return self.__action_q.get()
+        else:
+            return self.player.play(state)
+
+
+class _ThreadWithReturnValue(threading.Thread):
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self._return = None
+
+    def run(self):
+        self._return = self._target(*self._args, **self._kwargs)
+
+    def join(self, *args, **kwargs):
+        super().join(*args, **kwargs)
+        return self._return
+
+
 class MainWindow(Ui_FormMainMenu):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
@@ -124,21 +182,27 @@ class MainWindow(Ui_FormMainMenu):
         self.train_timer.timeout.connect(self.train_update)
         self.train_args_name = None
         self.train_thread = None
-        self.coach = None
+        self.coach: Coach = None
 
         self.pit_args = dotdict()
         self.pit_timer = QTimer(self)
         self.pit_timer.setInterval(500)
         self.pit_timer.timeout.connect(self.pit_update)
         self.pit_args_name = None
-        self.pit_players = []
+        self.pit_player_classes = []
+        self.pit_current_players = []
         self.pit_models = dict()
-        self.pit_executor = None
-        self.pit_result = None
-        self.arena = None
+        self.pit_chosen_eval_model = None
+        self.pit_eval_max_runtime = EVAL_MAX_RUN_TIME
+        self.pit_thread = None
+        self.arena: Arena = None
+
+        self.custom_gui: CustomGUI = None
+        self.custom_gui_action_queue = Queue()
 
         self.train_ended_counter = 0
-        self.current_env = None
+        self.current_env_class: GameState = None
+        self.current_gui_class: CustomGUI = None
         self.env_module = None
         self.env_name = None
         self.tb_url = None
@@ -201,7 +265,7 @@ class MainWindow(Ui_FormMainMenu):
         else:
             if not self.train_args:
                 train_status += 'Not ready, choose args'
-            elif not self.current_env:
+            elif not self.current_env_class:
                 train_status += 'Not ready, choose env'
             else:
                 train_status += 'Ready to train'
@@ -216,9 +280,9 @@ class MainWindow(Ui_FormMainMenu):
         else:
             if not self.pit_args:
                 pit_status += 'Not ready, choose args'
-            elif not self.current_env:
+            elif not self.current_env_class:
                 pit_status += 'Not ready, choose env'
-            elif not self.pit_players:
+            elif not self.pit_player_classes:
                 pit_status += 'Not ready, choose players'
             else:
                 pit_status += 'Ready to start'
@@ -265,7 +329,8 @@ class MainWindow(Ui_FormMainMenu):
                 self.lblPitNumGames.setText(f'Games Played: {self.arena.games_played}/{self.arena.total_games}')
             else:
                 self.lblPitNumGames.setText(f'Num. Turns: {self.arena.game_state.turns}/{self.pit_args.max_moves}')
-            self.lblPitWinrates.setText(f'Win Rates: {[round(w, 3) for w in self.arena.winrates]}')
+            if any(w for w in self.arena.winrates):
+                self.lblPitWinrates.setText(f'Win Rates: {[round(w[-1], 3) for w in self.arena.winrates]}')
             self.lblPitEpsTime.setText(f'Episode Time: {round(self.arena.eps_time, 3)}')
             self.lblPitIterTime.setText(f'Total Time: {self.arena.total_time}')
             self.lblPitTimeRemaining.setText(f'Est. Time Remaining: {self.arena.eta}')
@@ -275,7 +340,7 @@ class MainWindow(Ui_FormMainMenu):
             self.coach.pause_train.clear()
             return
         try:
-            self.coach = Coach(self.current_env, NNetWrapper(self.current_env, self.train_args), self.train_args)
+            self.coach = Coach(self.current_env_class, NNetWrapper(self.current_env_class, self.train_args), self.train_args)
         except (RuntimeError, IOError) as e:
             show_dialog('An error occurred loading the model: ' + str(e), self, error=True)
             return
@@ -346,29 +411,37 @@ class MainWindow(Ui_FormMainMenu):
         else:
             self.train_ended_counter = 0
 
-        if self.train_ended_counter * self.train_timer.interval() >= 2:
+        if self.train_ended_counter * self.train_timer.interval() >= AUTO_END_TRAIN_TIME:
             # TODO: when a new iteration starts after saving samples, this is triggered while training is still running
             # (only happens when using model in self-play instead of warmup)
             self.stop_train()
 
-    def start_pit_clicked(self):
-        def controls_on():
-            self.btnPitControlStart.setEnabled(True)
-            self.btnPitControlPause.setEnabled(False)
-            self.btnPitControlStop.setEnabled(False)
+    def set_pit_controls(self, enabled=True):
+        self.btnPitControlStart.setEnabled(enabled)
+        self.btnPitControlPause.setEnabled(not enabled)
+        self.btnPitControlStop.setEnabled(not enabled)
 
-        self.btnPitControlStart.setEnabled(False)
-        self.btnPitControlPause.setEnabled(True)
-        self.btnPitControlStop.setEnabled(True)
+        self.btnLoadPitArgs.setEnabled(enabled)
+        self.btnLoadPitEnv.setEnabled(enabled)
+        self.btnEditPitArgs.setEnabled(enabled)
+        self.btnEditPlayers.setEnabled(enabled)
+
+        self.checkShufflePlayers.setEnabled(enabled)
+        self.checkBatchedArena.setEnabled(enabled)
+        self.checkConsoleVerbose.setEnabled(enabled)
+        self.checkShowVisual.setEnabled(enabled)
+
+    def start_pit_clicked(self):
+        self.set_pit_controls(False)
 
         if self.arena and self.arena.pause_event.is_set() and not self.arena.stop_event.is_set():
             self.arena.pause_event.clear()
             return
 
-        if self.checkBatchedArena.isChecked() and not all([p.supports_process() for p in self.pit_players]):
+        if self.checkBatchedArena.isChecked() and not all([p.supports_process() for p in self.pit_player_classes]):
             show_dialog('Cannot start Arena with the current players and Batched Arena option because '
                         'not all selected players support batched Arena.', self, error=True)
-            controls_on()
+            self.set_pit_controls()
             return
 
         text, ok = QInputDialog.getText(
@@ -380,32 +453,28 @@ class MainWindow(Ui_FormMainMenu):
                 num_games = int(text)
             except ValueError:
                 show_dialog('Invalid value for number of games was provided.', self, error=True)
-                controls_on()
+                self.set_pit_controls()
                 return
         else:
-            controls_on()
+            self.set_pit_controls()
             return
 
-        for i, player in enumerate(self.pit_players):
+        self.pit_current_players = []
+        for i, player in enumerate(self.pit_player_classes):
+            args = [self.current_env_class, self.pit_args, self.checkConsoleVerbose.isChecked()]
+
             if player.requires_model():
                 filename, model = self.pit_models[i]
-                if model.loaded: continue
+                if not model.loaded:
+                    try:
+                        model.load_checkpoint(Path(self.pit_args.checkpoint) / self.pit_args.run_name, filename)
+                    except (IOError, RuntimeError) as e:
+                        show_dialog(f'Unable to load the model file {filename}: {e}', self, error=True)
+                        self.set_pit_controls()
+                        return
 
-                try:
-                    model.load_checkpoint(Path(self.pit_args.checkpoint) / self.pit_args.run_name, filename)
-                except (IOError, RuntimeError) as e:
-                    show_dialog(f'Unable to load the model file {filename}: {e}', self, error=True)
-                    controls_on()
-                    return
-
-                args = (self.current_env, self.pit_args, model)
-            else:
-                args = (self.current_env, self.pit_args)
-
-            if issubclass(self.pit_players[i], MCTSPlayer):
-                self.pit_players[i] = self.pit_players[i](*args, verbose=self.checkConsoleVerbose.isChecked())
-            else:
-                self.pit_players[i] = self.pit_players[i](*args)
+                args.insert(0, model)
+            self.pit_current_players.append(self.pit_player_classes[i](*args))
 
         if hasattr(self.env_module, 'display'):
             display = self.env_module.display
@@ -414,46 +483,95 @@ class MainWindow(Ui_FormMainMenu):
             display = None
             verbose = False
 
-        self.arena = Arena(self.pit_players, self.current_env, use_batched_mcts=self.checkBatchedArena.isChecked(),
-                           display=display, args=self.pit_args)
-        self.btnLoadPitArgs.setEnabled(False)
-        self.btnLoadPitEnv.setEnabled(False)
-        self.btnEditPitArgs.setEnabled(False)
-        self.btnEditPlayers.setEnabled(False)
+        if self.checkShowVisual.isChecked() and not self.checkBatchedArena.isChecked():
+            evaluator = None
+            if self.pit_chosen_eval_model and self.pit_chosen_eval_model[0] != 'None':
+                if (
+                    not self.pit_chosen_eval_model[1].loaded
+                    and self.pit_chosen_eval_model[0] != 'RawMCTS'
+                ):
+                    try:
+                        self.pit_chosen_eval_model[1].load_checkpoint(
+                            Path(self.pit_args.checkpoint) / self.pit_args.run_name, self.pit_chosen_eval_model[0]
+                        )
+                    except (IOError, RuntimeError) as e:
+                        show_dialog(f'Unable to load the model file {self.pit_chosen_eval_model[0]}: {e}', self,
+                                    error=True)
+                        self.set_pit_controls()
+                        return
 
-        self.pit_executor = concurrent.futures.ThreadPoolExecutor(1)
-        self.pit_result = self.pit_executor.submit(self.arena.play_games, num_games, verbose,
-                                                   self.checkShufflePlayers.isChecked())
-        self.pit_timer.start()
-        """
-        self.pit_thread = threading.Thread(
+                evaluator = MCTSEvaluator(
+                    args=self.pit_args,
+                    model=self.pit_chosen_eval_model[1] if self.pit_chosen_eval_model[0] != 'RawMCTS' else None,
+                    max_search_time=self.pit_eval_max_runtime if self.pit_eval_max_runtime else None
+                )
+
+            # wrap all players with custom gui wrapper class
+            # to receive signals, etc.
+            for i in range(len(self.pit_current_players)):
+                self.pit_current_players[i] = _CustomGUIPlayerWrapper(
+                    self.pit_current_players[i],
+                    self.custom_gui_action_queue,
+                    self.custom_gui_arena_play_called
+                )
+
+            if evaluator:
+                qm = QMessageBox
+                show_hints = qm.question(self, 'Move Hints', 'Do you want to show move hints?',
+                                         qm.Yes | qm.No) == qm.Yes
+            else:
+                show_hints = False
+
+            self.custom_gui: CustomGUI = self.current_gui_class(
+                self.custom_gui_player_moved,
+                self.custom_gui_closed,
+                user_input=False,
+                show_hints=show_hints,
+                title=f'{self.env_name} Game',
+                evaluator=evaluator
+            )
+        elif self.checkShowVisual.isChecked():
+            show_dialog('Cannot show visual output with Batched Arena option.', self, title='Warning', modal=True)
+
+        try:
+            self.arena = Arena(self.pit_current_players, self.current_env_class,
+                               use_batched_mcts=self.checkBatchedArena.isChecked(),
+                               display=display, args=self.pit_args)
+        except ValueError as e:
+            show_dialog(str(e), self, error=True)
+            self.set_pit_controls()
+            return
+
+        self.pit_thread = _ThreadWithReturnValue(
             target=self.arena.play_games,
-            args=(num_games, self.checkConsoleVerbose.isChecked(), self.checkShufflePlayers.isChecked()),
+            args=(num_games, verbose, self.checkShufflePlayers.isChecked()),
             daemon=True
         )
         self.pit_thread.start()
         self.pit_timer.start()
-        """
+
+        if self.custom_gui:
+            self.custom_gui.show()
 
     def stop_pit(self):
         self.arena.stop_event.set()
         self.pit_timer.stop()
 
-        self.btnPitControlStart.setEnabled(True)
-        self.btnPitControlPause.setEnabled(False)
-        self.btnPitControlStop.setEnabled(False)
-
-        self.btnLoadPitArgs.setEnabled(True)
-        self.btnLoadPitEnv.setEnabled(True)
-        self.btnEditPitArgs.setEnabled(True)
-        self.btnEditPlayers.setEnabled(True)
-
+        self.set_pit_controls()
         self.progressPit.setValue(0)
 
-        wins, draws, winrates = self.pit_result.result()
-        self.pit_executor.shutdown(wait=True)
-        self.arena = None
+        if self.custom_gui:
+            self.custom_gui_action_queue.put(_CustomGUIPlayerWrapper.SENTINEL)
+            self.custom_gui.user_input = False
+
+        try:
+            wins, draws, winrates = self.pit_thread.join()
+        except TypeError:
+            wins = draws = winrates = 'N/A'
         self.update_stats()
+        if self.custom_gui:
+            self.custom_gui.update_state(self.arena.game_state)
+        self.arena = None
 
         msgbox = QMessageBox(self)
         msgbox.setText(
@@ -461,6 +579,9 @@ class MainWindow(Ui_FormMainMenu):
         )
         msgbox.setFont(QFont('Arial', 14))
         msgbox.setWindowTitle('Arena Result')
+        if self.custom_gui:
+            msgbox.accepted.connect(self.custom_gui.close)
+            msgbox.rejected.connect(self.custom_gui.close)
         msgbox.show()
 
     def pause_pit(self):
@@ -470,14 +591,31 @@ class MainWindow(Ui_FormMainMenu):
         self.btnPitControlStop.setEnabled(True)
 
     def pit_update(self):
+        if self.arena and (self.arena.pause_event.is_set() or self.arena.stop_event.is_set()):
+            return
+
         self.update_stats()
-        if self.arena.total_games > 1:
+        if self.arena.total_games > 0:
             self.progressPit.setValue(self.arena.games_played / self.arena.total_games * 100)
         else:
             self.progressPit.setValue(self.arena.game_state.turns / self.pit_args.max_moves * 100)
 
         if self.arena.state == ArenaState.STANDBY:
             self.stop_pit()
+
+    def custom_gui_player_moved(self, action: int):
+        self.custom_gui_action_queue.put(action)
+        self.custom_gui.user_input = False
+
+    def custom_gui_arena_play_called(self, player: BasePlayer, state: GameState):
+        self.custom_gui.update_state(state)
+        if player.is_human():
+            self.custom_gui.user_input = True
+
+    def custom_gui_closed(self):
+        if self.arena:
+            self.stop_pit()
+        self.custom_gui = None
 
     def _show_env_select_dialog(self):
         def dialog_accepted():
@@ -487,13 +625,26 @@ class MainWindow(Ui_FormMainMenu):
                 return
 
             try:
-                self.env_module = __import__(str(ENVS_DIR / chosen_env / chosen_env).replace(os.sep, '.'), fromlist=[''])
-                self.current_env = self.env_module.Game
+                self.env_module = __import__(
+                    str(ENVS_DIR / chosen_env / chosen_env).replace(os.sep, '.'), fromlist=['']
+                )
+                self.current_env_class = self.env_module.Game
             except Exception as e:
                 show_dialog('Failed to load the selected training env: ' + str(e), self, error=True)
                 return
 
+            try:
+                self.current_gui_class = __import__(
+                    str(ENVS_DIR / chosen_env / GUI_MODULE_NAME).replace(os.sep, '.'), fromlist=['']
+                ).GUI
+            except Exception as e:
+                show_dialog(
+                    f'Could not find GUI module for the env `{chosen_env}`, custom GUI will not be available.', self
+                )
+                self.current_gui_class = None
+
             self.env_name = chosen_env
+            self.pit_current_players = []
             self.update_env_and_args()
             dialog.close()
 
@@ -560,7 +711,7 @@ class MainWindow(Ui_FormMainMenu):
                         values.append(v.replace(CALLABLE_PREFIX, ''))
                     else:
                         values.append(f'"{v}"')
-                elif isinstance(v, Callable):
+                elif callable(v):
                     values.append(v.__name__)
                 else:
                     values.append(str(v))
@@ -646,35 +797,53 @@ class MainWindow(Ui_FormMainMenu):
 
         chosen_players = []
         chosen_models = dict()
+        chosen_eval_model = None
+        max_eval_time = EVAL_MAX_RUN_TIME
         dialog = None
         model_dialog = None
         user_cancelled = False
 
         def _accept_model():
             chosen_model = model_dialog.comboBox.currentText()
-            chosen_models[len(chosen_players) - 1] = (chosen_model, NNetWrapper(self.current_env, self.pit_args))
+            chosen_models[len(chosen_players) - 1] = (chosen_model, NNetWrapper(self.current_env_class, self.pit_args))
             model_dialog.close()
             dialog.close()
+
+        def _accept_eval_model():
+            nonlocal chosen_eval_model
+            chosen_eval_model = (
+                model_dialog.comboBox.currentText(),
+                NNetWrapper(self.current_env_class, self.pit_args)
+            )
+            model_dialog.close()
+            dialog.close()
+
+        def _show_model_dialog(accepted=_accept_model, add_items=None, display_text=None):
+            model_files = [x.name for x in (Path(self.pit_args.checkpoint) / self.pit_args.run_name).glob('*.pkl')]
+            if add_items:
+                model_files = add_items + model_files
+
+            nonlocal model_dialog
+            model_dialog = Ui_DialogCombo(parent=self)
+            model_dialog.comboBox.addItems(model_files)
+
+            last_model = self.pit_models.get(len(chosen_players) - 1)
+            if last_model:
+                model_dialog.comboBox.setCurrentText(last_model[0])
+
+            model_dialog.lblTitle.setText(
+                display_text if display_text else 'Select the model to use for this player:'
+            )
+            model_dialog.setWindowTitle('Edit Players')
+            model_dialog.btnBox.accepted.connect(accepted)
+            model_dialog.btnBox.rejected.connect(_cancel)
+            dialog.hide()
+            if model_dialog.exec_() != 0: _cancel()
 
         def _accept():
             chosen_players.append(players[dialog.comboBox.currentText()])
             if chosen_players[-1].requires_model():
-                model_files = [x.name for x in (Path(self.pit_args.checkpoint) / self.pit_args.run_name).glob('*.pkl')]
-
-                nonlocal model_dialog
-                model_dialog = Ui_DialogCombo(parent=self)
-                model_dialog.comboBox.addItems(model_files)
-
-                last_model = self.pit_models.get(len(chosen_players) - 1)
-                if last_model:
-                    model_dialog.comboBox.setCurrentText(last_model[0])
-
-                model_dialog.lblTitle.setText('Select the model to use for this player:')
-                model_dialog.setWindowTitle('Edit Players')
-                model_dialog.btnBox.accepted.connect(_accept_model)
-                model_dialog.btnBox.rejected.connect(_cancel)
-                dialog.hide()
-                if model_dialog.exec_() != 0: _cancel()
+                _show_model_dialog()
             else:
                 dialog.close()
 
@@ -685,14 +854,13 @@ class MainWindow(Ui_FormMainMenu):
             if model_dialog:
                 model_dialog.close()
 
-        for player_idx in range(self.current_env.num_players()):
+        for player_idx in range(self.current_env_class.num_players()):
             if user_cancelled: return
             dialog = Ui_DialogCombo(parent=self)
             dialog.comboBox.addItems(players.keys())
 
-            if self.pit_players and player_idx < len(self.pit_players):
-                used_player = self.pit_players[player_idx]
-                used_player = used_player.__name__ if inspect.isclass(used_player) else used_player.__class__.__name__
+            if self.pit_player_classes and player_idx < len(self.pit_player_classes):
+                used_player = self.pit_player_classes[player_idx].__name__
                 if used_player in players.keys():
                     dialog.comboBox.setCurrentText(used_player)
 
@@ -701,9 +869,37 @@ class MainWindow(Ui_FormMainMenu):
             dialog.btnBox.accepted.connect(_accept)
             dialog.btnBox.rejected.connect(_cancel)
             if dialog.exec_() != 0: return
+        if user_cancelled: return
 
-        self.pit_players = chosen_players
+        _show_model_dialog(
+            _accept_eval_model,
+            add_items=['None', 'RawMCTS'],
+            display_text='Select the model to use for evaluation:'
+        )
+        if user_cancelled: return
+
+        if chosen_eval_model[0] != 'None':
+            text, ok = QInputDialog.getText(
+                self, 'Max Evaluator Runtime', 'Enter the max runtime for the evaluator in seconds (0 for infinite):',
+                QLineEdit.Normal, inputMethodHints=Qt.InputMethodHint.ImhPreferNumbers,
+                text=str(self.pit_eval_max_runtime if self.pit_eval_max_runtime is not None else EVAL_MAX_RUN_TIME)
+            )
+            if ok:
+                try:
+                    max_eval_time = float(text)
+                    if max_eval_time < 0:
+                        show_dialog('Invalid max eval time was provided, must be a positive number.', self, error=True)
+                        return
+                except ValueError:
+                    show_dialog('Invalid value for number of games was provided.', self, error=True)
+                    return
+            else:
+                return
+
+        self.pit_player_classes = chosen_players
         self.pit_models = chosen_models
+        self.pit_chosen_eval_model = chosen_eval_model
+        self.pit_eval_max_runtime = max_eval_time
         self.update_env_and_args()
 
     def _parse_str_args(self, args: dotdict):
@@ -727,7 +923,7 @@ class MainWindow(Ui_FormMainMenu):
     def _get_str_args(args: dotdict):
         save_args = dict()
         for k, v in args.items():
-            if isinstance(v, Callable):
+            if callable(v):
                 v = CALLABLE_PREFIX + v.__name__
             save_args.update({k: v})
 
@@ -740,7 +936,7 @@ class MainWindow(Ui_FormMainMenu):
         with open(filepath) as f:
             load_args.update(json.load(f))
 
-        args.update(self._parse_str_args(load_args))
+        args.update(self._parse_str_args(load_args))  # TODO: TypeError: 'NoneType' object is not iterable
         return args
 
     def _save_args_from(self, args: dotdict or dict, filepath, replace=True):
@@ -755,16 +951,17 @@ class MainWindow(Ui_FormMainMenu):
     def update_env_and_args(self):
         self.lblCurrentRun.setText(f'Current Env: {self.env_name}\nCurrent Train Args: {self.train_args_name}')
         self.lblCurrentPitRun.setText(
-            f'Current Env: {self.env_name}\nCurrent Arena Args: {self.pit_args_name}\nCurrent Players: '
-            f'{", ".join([p.__name__ if inspect.isclass(p) else p.__class__.__name__ for p in self.pit_players]) if self.pit_players else None}'
+            f'Env: {self.env_name}\nArena Args: {self.pit_args_name}\nPlayers: '
+            f'{", ".join([p.__name__ for p in self.pit_player_classes]) if self.pit_player_classes else None}\n'
+            f'Evaluator: {self.pit_chosen_eval_model[0] if self.pit_chosen_eval_model else None}'
         )
         self.btnTrainControlStart.setEnabled(
-            (self.coach is None or (self.coach is not None and self.coach.pause_train.is_set())) and self.current_env is not None and bool(self.train_args)
+            (self.coach is None or (self.coach is not None and self.coach.pause_train.is_set())) and self.current_env_class is not None and bool(self.train_args)
         )
         self.btnPitControlStart.setEnabled(
-            (self.arena is None or (self.arena is not None and self.arena.pause_event.is_set())) and self.current_env is not None and bool(self.pit_args) and bool(self.pit_players)
+            (self.arena is None or (self.arena is not None and self.arena.pause_event.is_set())) and self.current_env_class is not None and bool(self.pit_args) and bool(self.pit_player_classes)
         )
-        self.btnEditPlayers.setEnabled(self.current_env is not None and bool(self.pit_args))
+        self.btnEditPlayers.setEnabled(self.current_env_class is not None and bool(self.pit_args))
         self.update_stats()
 
     def open_tensorboard(self):

@@ -5,6 +5,10 @@ import numpy as np
 
 
 class HumanConnect4Player(BasePlayer):
+    @staticmethod
+    def is_human() -> bool:
+        return True
+
     def play(self, state: GameState) -> int:
         valid_moves = state.valid_moves()
         print('\nMoves:', [i for (i, valid)

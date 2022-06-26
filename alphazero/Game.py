@@ -9,6 +9,7 @@ class GameState(ABC):
         self._board = board
         self._player = 0
         self._turns = 0
+        self.last_action = None
 
     def __str__(self) -> str:
         return f'Player:\t{self._player}\n{self._board}\n'
@@ -73,7 +74,7 @@ class GameState(ABC):
     @abstractmethod
     def play_action(self, action: int) -> None:
         """Play the action in the current state given by argument action."""
-        pass
+        self.last_action = action
 
     @abstractmethod
     def win_state(self) -> np.ndarray:

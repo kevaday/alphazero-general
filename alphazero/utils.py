@@ -27,6 +27,10 @@ def default_temp_scaling(*args, **kwargs) -> float:
     return scale_temp(0.15, 0.2, *args, **kwargs)
 
 
+def const_temp_scaling(temp, *args, **kwargs) -> float:
+    return temp
+
+
 def get_game_results(result_queue, game_cls, _get_index=None):
     player_to_index = {p: i for i, p in enumerate(range(game_cls.num_players()))}
 
@@ -77,3 +81,14 @@ def plot_mcts_tree(mcts, max_depth=2):
     pos = nx.nx_agraph.graphviz_layout(G, prog='dot', args='-Gnodesep=1.0 -Goverlap=false')
     nx.draw(G, pos, labels=labels)
     plt.show()
+
+
+def convert_checkpoint_file(filepath: str, game_cls, args: dotdict, overwrite_args=False):
+    from alphazero.NNetWrapper import NNetWrapper
+    nnet = NNetWrapper(game_cls, args)
+    nnet.load_checkpoint('', filepath, use_saved_args=not overwrite_args)
+    nnet.save_checkpoint('', filepath, make_dirs=False)
+
+
+def map_value(value, in_min, in_max, out_min, out_max):
+    return (value - in_min) * (out_max - out_min) / (in_max - in_min) + out_min

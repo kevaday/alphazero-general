@@ -1,16 +1,17 @@
-from hnefatafl.engine import Move, BoardGameException
-from alphazero.envs.hnefatafl.tafl_old import get_action
-from alphazero.envs.hnefatafl.fastafl import get_action as ft_get_action
+#from hnefatafl.engine import Move, BoardGameException
+#from alphazero.envs.hnefatafl.tafl_old import get_action
+from alphazero.envs.hnefatafl.fastafl import get_action
 from alphazero.GenericPlayers import BasePlayer
 from alphazero.Game import GameState
 
 import pyximport, numpy
 pyximport.install(setup_args={'include_dirs': numpy.get_include()})
 
-from fastafl.cengine import Square
-from fastafl.errors import InvalidMoveError
+from boardgame.board import Square
+from boardgame.errors import InvalidMoveError
 
 
+"""
 class HumanTaflPlayer(BasePlayer):
     def play(self, state: GameState):
         valid_moves = state.valid_moves()
@@ -29,16 +30,21 @@ class HumanTaflPlayer(BasePlayer):
                                             f"in valids: {bool(valid_moves[action])}). Enter a valid move: "))
 
         return action
+"""
 
 
 class HumanFastaflPlayer(BasePlayer):
+    @staticmethod
+    def is_human() -> bool:
+        return True
+
     def play(self, state: GameState):
         valid_moves = state.valid_moves()
 
         def string_to_action(player_inp: str) -> int:
             try:
                 move_lst = [int(x) for x in player_inp.split()]
-                return ft_get_action(state._board, (Square(*move_lst[:2]), Square(*move_lst[2:])))
+                return get_action(state._board, (Square(*move_lst[:2]), Square(*move_lst[2:])))
             except (ValueError, AttributeError, InvalidMoveError):
                 return -1
         

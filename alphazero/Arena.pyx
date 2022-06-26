@@ -28,6 +28,9 @@ class _PlayerWrapper:
     def __call__(self, *args, **kwargs):
         return self.player(*args, **kwargs)
 
+    def process(self, *args, **kwargs):
+        return self.player.process(*args, **kwargs)
+
     def update(self, *args, **kwargs):
         self.player.update(*args, **kwargs)
 
@@ -69,7 +72,7 @@ def _set_state(state: ArenaState):
 
 class Arena:
     """
-    An Arena class where any game's agents can be pit against each other.
+    An Arena class where any game's agents can be pitted against each other.
     """
 
     @_set_state(ArenaState.INIT)
@@ -97,12 +100,12 @@ class Arena:
             raise ValueError('Argument `players` must have the same amount of players as the game supports. '
                              f'Got {len(players)} player agents, while the game requires {num_players}')
 
-        self.__players = None
-        self.players = players
         self.game_cls = game_cls
-        self.use_batched_mcts = use_batched_mcts
         self.display = display
         self.args = args.copy()
+        self.use_batched_mcts = use_batched_mcts
+        self.__players = None
+        self.players = players
         self.games_played = 0
         self.total_games = 0
         self.eps_time = 0
@@ -123,6 +126,11 @@ class Arena:
     def players(self, value):
         self.__players = value
         self.__init_players()
+        self.__check_players_valid()
+
+    def __check_players_valid(self):
+        if self.use_batched_mcts and not all(p.player.supports_process() for p in self.players):
+            raise ValueError('Batched MCTS is not supported for players that do not support batch processing.')
 
     def __init_players(self):
         new_players = []
@@ -174,6 +182,8 @@ class Arena:
                 time.sleep(.1)
 
             action = self.players[player_to_index[self.game_state.player]](self.game_state)
+            if self.stop_event.is_set() or not isinstance(action, int):
+                break
 
             # valids = state.valid_moves()
             # assert valids[action] > 0, ' '.join(map(str, [action, index, state.player, turns, valids]))
@@ -229,6 +239,8 @@ class Arena:
 
         if self.use_batched_mcts:
             # TODO: fix batched arena possibly taking up to ~10x longer than self play
+            self.__check_players_valid()
+
             self.args.gamesPerIteration = num
             self._agents = []
             policy_tensors = []
@@ -286,7 +298,7 @@ class Arena:
                     for player in range(len(self.players)):
                         batch = data[player]
                         if not isinstance(batch, list):
-                            p, v = self.players[player](batch)
+                            p, v = self.players[player].process(batch)
                             policy.append(p.to(policy_tensors[id].device))
                             value.append(v.to(value_tensors[id].device))
 
@@ -393,7 +405,11 @@ class Arena:
 
         wins = [player.wins for player in self.__sorted_players()]
 
-        return wins, self.draws, list(zip(*self.winrates))[-1]
+        if any(self.winrates):
+            winrates = list(zip(*self.winrates))[-1]
+        else:
+            winrates = []
+        return wins, self.draws, winrates
 
     def get_winrate(self, player: int) -> Tuple[float, float]:
         """Returns the winrate of the given player and its standard deviation."""

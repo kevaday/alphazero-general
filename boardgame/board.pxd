@@ -67,3 +67,4 @@ cdef class BaseBoard:
     cpdef np.ndarray get_mask(self, tuple piece_types)
     cpdef list get_squares(self, tuple piece_types)
     cpdef int to_play(self)
+    cpdef bint is_turn(self, Square square)

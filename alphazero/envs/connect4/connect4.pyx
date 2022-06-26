@@ -39,6 +39,7 @@ class Game(GameState):
         game._board.pieces = np.copy(np.asarray(self._board.pieces))
         game._player = self._player
         game._turns = self.turns
+        game.last_action = self.last_action
         return game
 
     @staticmethod
@@ -57,6 +58,7 @@ class Game(GameState):
         return np.asarray(self._board.get_valid_moves())
 
     def play_action(self, action: int) -> None:
+        super().play_action(action)
         self._board.add_stone(action, (1, -1)[self.player])
         self._update_turn()
 

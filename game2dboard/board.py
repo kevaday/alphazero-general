@@ -382,7 +382,7 @@ class Board(UserList):
     # Methods
     # ---------------------------------------------------------------
 
-    def show(self):
+    def show(self, block=True):
         """
 
         Create the GUI, display and enter the run loop.
@@ -392,7 +392,12 @@ class Board(UserList):
         self._isrunning = True
         if callable(self._on_start):
             self._on_start()
-        self._root.mainloop()
+        if block:
+            self._root.mainloop()
+
+    def update(self):
+        """Must be called to update GUI if show(block=False) was called."""
+        self._root.update()
 
     def clear(self):
         """
@@ -406,7 +411,9 @@ class Board(UserList):
 
         Close the board, exiting the program.
         """
+        self._root.quit()
         self._root.destroy()
+        self._isrunning = False
 
     def create_output(self, **kwargs):
         """

@@ -1,13 +1,15 @@
 from alphazero.NNetArchitecture import ResNet, FullyConnected
 from alphazero.pytorch_classification.utils import Bar, AverageMeter
 from alphazero.Game import GameState
+from alphazero.utils import dotdict
 from threading import Event
 from abc import ABC, abstractmethod
-from typing import Tuple
+from typing import Tuple, Optional
 
 
 import torch.optim as optim
 import numpy as np
+import warnings
 import torch
 import pickle
 import time
@@ -25,6 +27,8 @@ class BaseWrapper(ABC):
     """
 
     def __init__(self, game_cls: GameState, args):
+        self.game_cls = game_cls
+        self.args = args
         self.stop_train = Event()
         self.pause_train = Event()
 
@@ -82,14 +86,8 @@ class BaseWrapper(ABC):
 class NNetWrapper(BaseWrapper):
     def __init__(self, game_cls, args):
         super().__init__(game_cls, args)
-
-        if args.nnet_type == 'resnet':
-            self.nnet = ResNet(game_cls, args)
-        elif args.nnet_type == 'fc':
-            self.nnet = FullyConnected(game_cls, args)
-        else:
-            raise ValueError(f'Unknown NNet type "{args.nnet_type}"')
-
+        self.nnet = None
+        self._load_nnet(args)
         self.action_size = game_cls.action_size()
         self.optimizer = args.optimizer(self.nnet.parameters(), lr=args.lr, **args.optimizer_args)
 
@@ -100,7 +98,6 @@ class NNetWrapper(BaseWrapper):
         if args.cuda:
             self.nnet.cuda()
 
-        self.args = args
         self.current_step = 0
         self.total_steps = 0
         self.l_pi = 0
@@ -110,6 +107,14 @@ class NNetWrapper(BaseWrapper):
         self.elapsed_time = 0
         self.eta = 0
         self.__loaded = False
+
+    def _load_nnet(self, args):
+        if args.nnet_type == 'resnet':
+            self.nnet = ResNet(self.game_cls, args)
+        elif args.nnet_type == 'fc':
+            self.nnet = FullyConnected(self.game_cls, args)
+        else:
+            raise ValueError(f'Unknown NNet type "{args.nnet_type}"')
 
     @property
     def loaded(self):
@@ -199,7 +204,7 @@ class NNetWrapper(BaseWrapper):
 
         return pi_losses.avg, v_losses.avg
 
-    def predict(self, board):
+    def predict(self, board: np.ndarray):
         """
         board: np array with board
         """
@@ -232,29 +237,46 @@ class NNetWrapper(BaseWrapper):
     def loss_v(self, targets, outputs):
         return -self.args.value_loss_weight * torch.sum(targets * outputs) / targets.size()[0]
 
-    def save_checkpoint(self, folder='checkpoint', filename='checkpoint.pth.tar'):
+    def save_checkpoint(self, folder='checkpoint', filename='checkpoint.pth.tar', make_dirs=True):
         filepath = os.path.join(folder, filename)
-        if not os.path.exists(folder):
+        if make_dirs and not os.path.exists(folder):
             os.makedirs(folder)
 
         torch.save({
             'state_dict': self.nnet.state_dict(),
             'opt_state': self.optimizer.state_dict(),
-            'sch_state': self.scheduler.state_dict()
+            'sch_state': self.scheduler.state_dict(),
+            'args': self.args
         }, filepath, pickle_protocol=pickle.HIGHEST_PROTOCOL)
 
-    def load_checkpoint(self, folder='checkpoint', filename='checkpoint.pth.tar'):
+    def load_checkpoint(self, folder='checkpoint', filename='checkpoint.pth.tar',
+                        use_saved_args=True) -> Optional[dotdict]:
         # https://github.com/pytorch/examples/blob/master/imagenet/main.py#L98
         filepath = os.path.join(folder, filename)
         if not os.path.exists(filepath):
-            raise IOError("No model in path {}".format(filepath))
+            raise FileNotFoundError("No model in path {}".format(filepath))
 
         checkpoint = torch.load(filepath)
-        self.nnet.load_state_dict(checkpoint['state_dict'])
+        args_saved = 'args' in checkpoint
+        if use_saved_args and args_saved:
+            self.args = checkpoint['args']
+            self.__init__(self.game_cls, self.args)
+        elif use_saved_args and not args_saved:
+            warnings.warn('No args were saved in the checkpoint file, therefore they were not loaded.')
 
+        self.nnet.load_state_dict(checkpoint['state_dict'])
         if 'opt_state' in checkpoint:
             self.optimizer.load_state_dict(checkpoint['opt_state'])
         if 'sch_state' in checkpoint:
             self.scheduler.load_state_dict(checkpoint['sch_state'])
 
         self.__loaded = True
+        if args_saved:
+            return checkpoint['args']
+
+    @classmethod
+    def from_checkpoint(cls, game_cls, *args, **kwargs):
+        instance = cls.__new__(cls)
+        instance.game_cls = game_cls
+        instance.load_checkpoint(*args, **kwargs)
+        return instance

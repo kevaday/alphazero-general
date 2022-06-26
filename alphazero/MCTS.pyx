@@ -49,8 +49,6 @@ def rebuild_node(children, a, cpuct, num_players, e, q, n, p, player):
 cdef class Node:
     cdef public list _children
     cdef public int a
-    cdef public float cpuct
-    cdef public int _players
     cdef public np.ndarray e
     cdef public float q
     cdef public float v
@@ -58,11 +56,9 @@ cdef class Node:
     cdef public float p
     cdef public int player
 
-    def __init__(self, int action, float cpuct, int num_players):
+    def __init__(self, int action, int num_players):
         self._children = []
         self.a = action
-        self.cpuct = cpuct
-        self._players = num_players
         self.e = np.zeros(num_players + 1, dtype=np.uint8)
         self.q = 0
         self.v = 0
@@ -70,11 +66,15 @@ cdef class Node:
         self.p = 0
         self.player = 0
 
+    def __repr__(self):
+        return 'Node(a={}, e={}, q={}, v={}, n={}, p={}, player={})' \
+            .format(self.a, self.e, self.q, self.v, self.n, self.p, self.player)
+
     # def __reduce__(self):
     #    return rebuild_node, ([n.__reduce__() for n in self._children], self.a, self.cpuct, self._players, self.e, self.q, self.n, self.p, self.player)
 
-    cdef void add_children(self, np.ndarray v):
-        self._children.extend([Node(a, self.cpuct, self._players) for a, valid in enumerate(v) if valid])
+    cdef void add_children(self, np.ndarray v, int num_players):
+        self._children.extend([Node(a, num_players) for a, valid in enumerate(v) if valid])
         # shuffle children
         np.random.shuffle(self._children)
 
@@ -83,23 +83,24 @@ cdef class Node:
         for c in self._children:
             c.p = pi[c.a]
 
-    cdef float uct(self, float sqrtParentN, float fpu_value):
-        return (fpu_value if self.n == 0 else self.q) + self.cpuct * self.p * sqrtParentN / (1 + self.n)
+    cdef float uct(self, float sqrt_parent_n, float fpu_value, float cpuct):
+        return (fpu_value if self.n == 0 else self.q) + cpuct * self.p * sqrt_parent_n / (1 + self.n)
 
-    cdef Node best_child(self, float fpu_reduction):
+    cdef Node best_child(self, float fpu_reduction, float cpuct):
         cdef Node c
         cdef float seen_policy = sum([c.p for c in self._children if c.n > 0])
         cdef float fpu_value = self.v - fpu_reduction * sqrt(seen_policy)
-        cdef float curBest = -float('inf')
-        cdef float sqrtN = sqrt(self.n)
+        cdef float cur_best = -float('inf')
+        cdef float sqrt_n = sqrt(self.n)
         cdef float uct
         child = None
 
         for c in self._children:
-            uct = c.uct(sqrtN, fpu_value)
-            if uct > curBest:
-                curBest = uct
+            uct = c.uct(sqrt_n, fpu_value, cpuct)
+            if uct > cur_best:
+                cur_best = uct
                 child = c
+
         return child
 
 
@@ -120,7 +121,7 @@ cdef class MCTS:
     cdef public float root_temp
     cdef public float min_discount
     cdef public float fpu_reduction
-    cdef public float _cpuct
+    cdef public float cpuct
     cdef public int _num_players
     cdef public Node _root
     cdef public Node _curnode
@@ -134,17 +135,24 @@ cdef class MCTS:
         self.root_temp = args.root_policy_temp
         self.min_discount = args.min_discount
         self.fpu_reduction = args.fpu_reduction
-        self._cpuct = args.cpuct
+        self.cpuct = args.cpuct
         self._num_players = args.num_players
-        self._root = Node(-1, self._cpuct, self._num_players)
+        self._root = Node(-1, self._num_players)
         self._curnode = self._root
         self._path = []
         self.depth = 0
         self.max_depth = 0
         self._discount_max_depth = 0
 
+    def __repr__(self):
+        return 'MCTS(root_noise_frac={}, root_temp={}, min_discount={}, fpu_reduction={}, cpuct={}, _num_players={}, ' \
+               '_root={}, _curnode={}, _path={}, depth={}, max_depth={})' \
+            .format(self.root_noise_frac, self.root_temp, self.min_discount,
+                    self.fpu_reduction,self.cpuct, self._num_players, self._root,
+                    self._curnode, self._path, self.depth, self.max_depth)
+
     cpdef void reset(self):
-        self._root = Node(-1, self._cpuct, self._num_players)
+        self._root = Node(-1, self._num_players)
         self._curnode = self._root
         self._path = []
         self.depth = 0
@@ -176,7 +184,7 @@ cdef class MCTS:
 
     cpdef void update_root(self, object gs, int a):
         if not self._root._children:
-            self._root.add_children(gs.valid_moves())
+            self._root.add_children(gs.valid_moves(), self._num_players)
 
         cdef Node c
         for c in self._root._children:
@@ -197,15 +205,15 @@ cdef class MCTS:
         for n, c in zip(noise, self._root._children):
             c.p = c.p * (1 - self.root_noise_frac) + self.root_noise_frac * n
 
-    cpdef object find_leaf(self, object game_state):
+    cpdef object find_leaf(self, object gs):
         self.depth = 0
         self._curnode = self._root
-        gs = game_state.clone()
+        cdef object leaf = gs.clone()
 
         while self._curnode.n > 0 and not self._curnode.e.any():
             self._path.append(self._curnode)
-            self._curnode = self._curnode.best_child(self.fpu_reduction)
-            gs.play_action(self._curnode.a)
+            self._curnode = self._curnode.best_child(self.fpu_reduction, self.cpuct)
+            leaf.play_action(self._curnode.a)
             self.depth += 1
 
         if self.depth > self.max_depth:
@@ -213,11 +221,11 @@ cdef class MCTS:
             self._discount_max_depth = self.depth
 
         if self._curnode.n == 0:
-            self._curnode.player = gs.player
-            self._curnode.e = gs.win_state()
-            self._curnode.add_children(gs.valid_moves())
+            self._curnode.player = leaf.player
+            self._curnode.e = leaf.win_state()
+            self._curnode.add_children(leaf.valid_moves(), self._num_players)
 
-        return gs
+        return leaf
 
     cpdef void process_results(self, object gs, float[:] value, float[:] pi, bint add_root_noise, bint add_root_temp):
         cdef float[:] valids
@@ -227,7 +235,7 @@ cdef class MCTS:
             value = np.array(self._curnode.e, dtype=np.float32)
         else:
             # reconstruct valid moves based on children of current node
-            # instead of recalculating with gs.valid_moves() - expensive
+            # instead of recalculating with gs.valid_moves() -> expensive
             valids = np.zeros(gs.action_size(), dtype=np.float32)
             for c in self._curnode._children:
                 valids[c.a] = 1
@@ -240,7 +248,7 @@ cdef class MCTS:
                 # add root temperature
                 if add_root_temp:
                     pi = np.asarray(pi) ** (1.0 / self.root_temp)
-                    # renormalize
+                    # re-normalize
                     pi /= np.sum(pi)
 
                 self._curnode.update_policy(pi)
@@ -291,6 +299,9 @@ cdef class MCTS:
             counts[c.a] = c.n
         return np.asarray(counts)
 
+    cpdef int best_action(self, object gs):
+        return np.argmax(self.counts(gs))
+
     cpdef np.ndarray probs(self, object gs, float temp=1.0):
         cdef float[:] counts = np.array(self.counts(gs), dtype=np.float32)
         cdef np.ndarray[dtype=np.float32_t, ndim=1] probs
@@ -313,8 +324,10 @@ cdef class MCTS:
             return probs
 
     cpdef float value(self, bint average=False):
-        """Get the Q value of the current root node in the range [0, 1] by looking at the max value of child nodes (or averaging them)."""
-        cdef float value = -float('inf')
+        """Get the value of the current root node in the range [0, 1]
+        by looking at the max value of child nodes (or averaging them).
+        """
+        cdef float value = 0
         cdef Node c
         
         if average:

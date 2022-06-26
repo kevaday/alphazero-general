@@ -26,6 +26,10 @@ class BasePlayer(ABC):
     def requires_model() -> bool:
         return False
 
+    @staticmethod
+    def is_human() -> bool:
+        return False
+
     def update(self, state: GameState, action: int) -> None:
         pass
 
@@ -49,11 +53,14 @@ class RandomPlayer(BasePlayer):
 
 
 class NNPlayer(BasePlayer):
-    def __init__(self, game_cls: GameState, args: dotdict, nn: NNetWrapper):
-        super().__init__(game_cls)
+    def __init__(self, nn: NNetWrapper, *args, **kwargs):
+        super().__init__(*args, **kwargs)
         self.nn = nn
-        self.args = args
-        self.temp = args.startTemp
+        self.temp = self.args.startTemp
+
+    @staticmethod
+    def supports_process() -> bool:
+        return True
 
     @staticmethod
     def requires_model() -> bool:
@@ -86,23 +93,32 @@ class NNPlayer(BasePlayer):
 
         return choice
 
+    def process(self, *args, **kwargs):
+        return self.nn.process(*args, **kwargs)
+
 
 class MCTSPlayer(BasePlayer):
-    def __init__(self, game_cls: GameState, args: dotdict, nn: NNetWrapper, print_policy=False, verbose=False,
-                 average_value=False, draw_mcts=False, draw_depth=2):
-        super().__init__(game_cls, args, verbose)
+    def __init__(self, nn: NNetWrapper, *args, print_policy=False,
+                 average_value=False, draw_mcts=False, draw_depth=2, **kwargs):
+        super().__init__(*args, **kwargs)
         self.nn = nn
-        self.temp = args.startTemp
+        self.temp = self.args.startTemp
         self.print_policy = print_policy
         self.average_value = average_value
         self.draw_mcts = draw_mcts
         self.draw_depth = draw_depth
         self.reset()
         if self.verbose:
-            self.mcts.search(game_cls(), self.nn, self.args.numMCTSSims, args.add_root_noise, args.add_root_temp)
+            self.mcts.search(
+                self.game_cls(), self.nn, self.args.numMCTSSims, self.args.add_root_noise, self.args.add_root_temp
+            )
             value = self.mcts.value(self.average_value)
             self.__rel_val_split = value if value > 0.5 else 1 - value
             print('initial value:', self.__rel_val_split)
+
+    @staticmethod
+    def supports_process() -> bool:
+        return True
 
     @staticmethod
     def requires_model() -> bool:
@@ -143,10 +159,13 @@ class MCTSPlayer(BasePlayer):
 
         return action
 
+    def process(self, *args, **kwargs):
+        return self.nn.process(*args, **kwargs)
+
 
 class RawMCTSPlayer(MCTSPlayer):
-    def __init__(self, game_cls: GameState, args: dotdict, verbose=False):
-        super().__init__(game_cls, args, None, verbose)
+    def __init__(self, *args, **kwargs):
+        super().__init__(None, *args, **kwargs)
         self._POLICY_SIZE = self.game_cls.action_size()
         self._POLICY_FILL_VALUE = 1 / self._POLICY_SIZE
         self._VALUE_SIZE = self.game_cls.num_players() + 1
@@ -163,13 +182,18 @@ class RawMCTSPlayer(MCTSPlayer):
         self.mcts.raw_search(state, self.args.numMCTSSims, self.args.add_root_noise, self.args.add_root_temp)
         self.temp = self.args.temp_scaling_fn(self.temp, state.turns, self.args.max_moves)
         policy = self.mcts.probs(state, self.temp)
+        action = np.random.choice(len(policy), p=policy)
 
         if self.verbose:
             print('max tree depth:', self.mcts.max_depth)
-            # print(f'value for player {state.player}: {value}')
+            print(f'value for player {state.player}: {self.mcts.value(self.average_value)}')
             print(f'policy: {policy}')
+            print('confidence of action:', policy[action])
 
-        return np.random.choice(len(policy), p=policy)
+        if self.draw_mcts:
+            plot_mcts_tree(self.mcts, max_depth=self.draw_depth)
+
+        return action
 
     def process(self, batch: torch.Tensor):
         return torch.full((batch.shape[0], self._POLICY_SIZE), self._POLICY_FILL_VALUE).to(batch.device), \
