@@ -6,7 +6,7 @@ pyximport.install(setup_args={'include_dirs': np.get_include()})
 from alphazero.envs.brandubh.fastafl import get_action as ft_get_action
 from alphazero.GenericPlayers import BasePlayer
 from alphazero.Game import GameState
-from AlphaZeroGUI.CustomGUI import MCTSEvaluator
+from alphazero.Evaluator import MCTSEvaluator
 
 from boardgame.board import Square
 from boardgame.errors import InvalidMoveError

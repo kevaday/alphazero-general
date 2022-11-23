@@ -136,7 +136,7 @@ cdef class MCTS:
         self.min_discount = args.min_discount
         self.fpu_reduction = args.fpu_reduction
         self.cpuct = args.cpuct
-        self._num_players = args.num_players
+        self._num_players = args._num_players
         self._root = Node(-1, self._num_players)
         self._curnode = self._root
         self._path = []

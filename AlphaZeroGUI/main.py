@@ -328,9 +328,13 @@ class MainWindow(Ui_FormMainMenu):
             if self.arena.total_games > 1:
                 self.lblPitNumGames.setText(f'Games Played: {self.arena.games_played}/{self.arena.total_games}')
             else:
-                self.lblPitNumGames.setText(f'Num. Turns: {self.arena.game_state.turns}/{self.pit_args.max_moves}')
-            if any(w for w in self.arena.winrates):
-                self.lblPitWinrates.setText(f'Win Rates: {[round(w[-1], 3) for w in self.arena.winrates]}')
+                self.lblPitNumGames.setText(
+                    f'Num. Turns: {self.arena.game_state.turns}/{self.arena.game_state.max_turns()}'
+                )
+
+            winrates = [round(p.winrate, 3) for p in self.arena.players]
+            if any(winrates):
+                self.lblPitWinrates.setText(f'Win Rates: {winrates}')
             self.lblPitEpsTime.setText(f'Episode Time: {round(self.arena.eps_time, 3)}')
             self.lblPitIterTime.setText(f'Total Time: {self.arena.total_time}')
             self.lblPitTimeRemaining.setText(f'Est. Time Remaining: {self.arena.eta}')
@@ -598,7 +602,7 @@ class MainWindow(Ui_FormMainMenu):
         if self.arena.total_games > 0:
             self.progressPit.setValue(self.arena.games_played / self.arena.total_games * 100)
         else:
-            self.progressPit.setValue(self.arena.game_state.turns / self.pit_args.max_moves * 100)
+            self.progressPit.setValue(self.arena.game_state.turns / self.arena.game_state.max_turns() * 100)
 
         if self.arena.state == ArenaState.STANDBY:
             self.stop_pit()
@@ -1012,8 +1016,11 @@ class MainWindow(Ui_FormMainMenu):
         dialog.show()
 
 
-if __name__ == "__main__":
+def run():
     app = QApplication(sys.argv)
     window = MainWindow()
     window.show()
     sys.exit(app.exec_())
+
+
+if __name__ == "__main__": run()

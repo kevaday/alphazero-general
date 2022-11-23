@@ -26,6 +26,9 @@ class CustomGameBoardWidget(GameBoardWidget):
         self.update()
 
     def set_actions(self, actions: List[int]) -> None:
+        if not actions:
+            return
+
         best_action = actions[0]
         worst_action = actions[-1]
         if best_action == self._last_best_action and worst_action == self._last_worst_action:
@@ -209,6 +212,7 @@ class GUI(CustomGUI):
 
     def close(self):
         self.window.close()
+        super().close()
 
     def undo(self):
         raise NotImplementedError

@@ -1,5 +1,5 @@
 from abc import ABC, abstractmethod
-from typing import List, Tuple, Any
+from typing import List, Tuple, Any, Optional
 
 import numpy as np
 
@@ -16,7 +16,7 @@ class GameState(ABC):
 
     @abstractmethod
     def __eq__(self, other: 'GameState') -> bool:
-        """Compare the current game state to an other"""
+        """Compare the current game state to another"""
         pass
 
     @abstractmethod
@@ -54,6 +54,11 @@ class GameState(ABC):
             num_players: the number of total players participating in the game.
         """
         pass
+
+    @staticmethod
+    def max_turns() -> Optional[int]:
+        """The maximum number of turns the game can last before a draw is declared."""
+        return None
 
     @property
     def player(self) -> int:

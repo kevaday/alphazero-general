@@ -13,7 +13,7 @@ from alphazero.MCTS import MCTS
 class SelfPlayAgent(mp.Process):
     def __init__(self, id, game_cls, ready_queue, batch_ready, batch_tensor, policy_tensor,
                  value_tensor, output_queue, result_queue, complete_count, games_played,
-                 stop_event: mp.Event, pause_event: mp.Event(), args, _is_arena=False, _is_warmup=False, _player_order=None):
+                 stop_event: mp.Event, pause_event: mp.Event(), args, _is_arena=False, _is_warmup=False):
         super().__init__()
         self.id = id
         self.game_cls = game_cls
@@ -42,7 +42,8 @@ class SelfPlayAgent(mp.Process):
         self._is_arena = _is_arena
         self._is_warmup = _is_warmup
         if _is_arena:
-            self.player_to_index = _player_order
+            self.player_to_index = list(range(game_cls.num_players()))
+            np.random.shuffle(self.player_to_index)
             self.batch_indices = None
         if _is_warmup:
             action_size = game_cls.action_size()
@@ -152,7 +153,9 @@ class SelfPlayAgent(mp.Process):
     def playMoves(self):
         for i in range(self.batch_size):
             self._check_pause()
-            self.temps[i] = self.args.temp_scaling_fn(self.temps[i], self.games[i].turns, self.args.max_moves) if not self._is_arena else self.args.arenaTemp
+            self.temps[i] = self.args.temp_scaling_fn(
+                self.temps[i], self.games[i].turns, self.game_cls.max_turns()
+            ) if not self._is_arena else self.args.arenaTemp
             policy = self._mcts(i).probs(self.games[i], self.temps[i])
             action = np.random.choice(self.games[i].action_size(), p=policy)
             if not self.fast and not self._is_arena:

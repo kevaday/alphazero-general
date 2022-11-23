@@ -209,6 +209,7 @@ class GUI(CustomGUI):
 
     def close(self):
         self.window.close()
+        super().close()
 
     def undo(self):
         raise NotImplementedError

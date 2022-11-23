@@ -34,8 +34,8 @@ DEFAULT_ARGS = dotdict({
     'train_steps_per_iteration': 64,
     'train_sample_ratio': 2,
     'averageTrainSteps': False,
-    'autoTrainSteps': True,  # Calculates the average number of samples in the training window
-                              # if averageTrainSteps set to True, otherwise uses latest
+    'autoTrainSteps': True,   # Calculates the average number of samples in the training window
+                              # if averageTrainSteps set to True, otherwise uses the latest
                               # number of samples, and does train_sample_ratio * avg_num_steps 
                               # or last_num_train_steps // train_batch_size
                               # training steps.
@@ -49,7 +49,7 @@ DEFAULT_ARGS = dotdict({
     'trainHistoryIncrementIters': 2,
     'max_moves': 128,  # Make sure to change this to a correct value for your env,
                        # as the default temperature scaling is based on the max game length.
-    'num_players': 2,
+    '_num_players': None,  # Doesn't have to be changed, set automatically by the env.
     'min_discount': 1,
     'fpu_reduction': 0.2,
     'num_stacked_observations': 8,  # TODO: built-in stacked observations (arg does nothing right now)
@@ -160,7 +160,7 @@ class Coach:
         self.train_net = nnet
         self.self_play_net = nnet.__class__(game_cls, args)
         self.args = args
-        self.args.num_players = self.game_cls.num_players()
+        self.args._num_players = self.game_cls.num_players()
         
         train_iter = self.args.startIter
 
@@ -531,28 +531,30 @@ class Coach:
         self._load_model(self.self_play_net, self.self_play_iter)
 
         print(f'PITTING AGAINST ITERATION {self.self_play_iter}')
-        if self.args.arenaBatched:
-            if not self.args.arenaMCTS:
-                self.args.arenaMCTS = True
-                print('WARNING: Batched arena comparison is enabled which uses MCTS, but arena MCTS is set to False.'
-                                  ' Ignoring this, and continuing with batched MCTS in arena.')
+        # if self.args.arenaBatched:
+        #     if not self.args.arenaMCTS:
+        #         self.args.arenaMCTS = True
+        #         print('WARNING: Batched arena comparison is enabled which uses MCTS, but arena MCTS is set to False.'
+        #                           ' Ignoring this, and continuing with batched MCTS in arena.')
 
-            nplayer = self.train_net.process
-            pplayer = self.self_play_net.process
-        else:
-            cls = MCTSPlayer if self.args.arenaMCTS else NNPlayer
-            nplayer = cls(self.game_cls, self.args, self.train_net)
-            pplayer = cls(self.game_cls, self.args, self.self_play_net)
+        #     nplayer = self.train_net.process
+        #     pplayer = self.self_play_net.process
+        # else:
+        #     cls = MCTSPlayer if self.args.arenaMCTS else NNPlayer
+        #     nplayer = cls(self.game_cls, self.args, self.train_net)
+        #     pplayer = cls(self.game_cls, self.args, self.self_play_net)
+        cls = MCTSPlayer if self.args.arenaMCTS else NNPlayer
+        nplayer = cls(self.train_net, self.game_cls, self.args)
+        pplayer = cls(self.self_play_net, self.game_cls, self.args)
 
         players = [nplayer] + [pplayer] * (self.game_cls.num_players() - 1)
         self.arena = Arena(players, self.game_cls, use_batched_mcts=self.args.arenaBatched, args=self.args)
-        wins, draws, _ = self.arena.play_games(self.args.arenaCompare)
+        wins, draws, winrates = self.arena.play_games(self.args.arenaCompare)
         if self.stop_train.is_set(): return
-        winrate, stdev = self.arena.get_winrate(0)
+        winrate = winrates[0]
 
         print(f'NEW/PAST WINS : {wins[0]} / {sum(wins[1:])} ; DRAWS : {draws}\n')
-        print(f'NEW MODEL WINRATE : {round(winrate, 3)} +/- {round(stdev, 3)} '
-              f'(in range {round(winrate - stdev, 3)} - {round(winrate + stdev, 3)})')
+        print(f'NEW MODEL WINRATE : {round(winrate, 3)}')
         self.writer.add_scalar('win_rate/past', winrate, model_iter)
 
         ### Model gating ###
@@ -575,23 +577,16 @@ class Coach:
     def compareToBaseline(self, iteration):
         test_player = self.args.baselineTester(self.game_cls, self.args)
         can_process = test_player.supports_process() and self.args.arenaBatched
-
-        if can_process:
-            test_player = test_player.process
-            nnplayer = self.train_net.process
-        else:
-            cls = MCTSPlayer if self.args.arenaMCTS else NNPlayer
-            nnplayer = cls(self.game_cls, self.args, self.train_net)
+        nnplayer = (MCTSPlayer if self.args.arenaMCTS else NNPlayer)(self.train_net, self.game_cls, self.args)
 
         print('PITTING AGAINST BASELINE: ' + self.args.baselineTester.__name__)
 
         players = [nnplayer] + [test_player] * (self.game_cls.num_players() - 1)
         self.arena = Arena(players, self.game_cls, use_batched_mcts=can_process, args=self.args)
-        wins, draws, winrates = self.arena.play_games(self.args.arenaCompareBaseline)
+        wins, draws, winrates = self.arena.play_games(self.args.arenaCompare)
         if self.stop_train.is_set(): return
-        winrate, stdev = self.arena.get_winrate(0)
+        winrate = winrates[0]
 
         print(f'NEW/BASELINE WINS : {wins[0]} / {sum(wins[1:])} ; DRAWS : {draws}\n')
-        print(f'NEW MODEL WINRATE : {round(winrate, 3)} +/- {round(stdev, 3)} '
-              f'(in range {round(winrate - stdev, 3)} - {round(winrate + stdev, 3)})')
+        print(f'NEW MODEL WINRATE : {round(winrate, 3)}')
         self.writer.add_scalar('win_rate/baseline', winrate, iteration)

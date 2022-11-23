@@ -43,6 +43,10 @@ class Game(GameState):
         return game
 
     @staticmethod
+    def max_turns() -> int:
+        return MAX_TURNS
+
+    @staticmethod
     def num_players() -> int:
         return NUM_PLAYERS
 

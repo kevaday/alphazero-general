@@ -70,7 +70,7 @@ class NNPlayer(BasePlayer):
         policy, _ = self.nn.predict(state.observation())
         valids = state.valid_moves()
         options = policy * valids
-        self.temp = self.args.temp_scaling_fn(self.temp, state.turns, self.args.max_moves)
+        self.temp = self.args.temp_scaling_fn(self.temp, state.turns, state.max_turns())
         if self.temp == 0:
             bestA = np.argmax(options)
             probs = [0] * len(options)
@@ -132,7 +132,7 @@ class MCTSPlayer(BasePlayer):
 
     def play(self, state) -> int:
         self.mcts.search(state, self.nn, self.args.numMCTSSims, self.args.add_root_noise, self.args.add_root_temp)
-        self.temp = self.args.temp_scaling_fn(self.temp, state.turns, self.args.max_moves)
+        self.temp = self.args.temp_scaling_fn(self.temp, state.turns, state.max_turns())
         policy = self.mcts.probs(state, self.temp)
 
         if self.print_policy:
@@ -180,7 +180,7 @@ class RawMCTSPlayer(MCTSPlayer):
 
     def play(self, state) -> int:
         self.mcts.raw_search(state, self.args.numMCTSSims, self.args.add_root_noise, self.args.add_root_temp)
-        self.temp = self.args.temp_scaling_fn(self.temp, state.turns, self.args.max_moves)
+        self.temp = self.args.temp_scaling_fn(self.temp, state.turns, state.max_turns())
         policy = self.mcts.probs(state, self.temp)
         action = np.random.choice(len(policy), p=policy)
 

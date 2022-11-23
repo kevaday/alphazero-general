@@ -1,41 +1,26 @@
 # cython: language_level=3
-import numpy as np
-
 from alphazero.Game import GameState
 from alphazero.GenericPlayers import BasePlayer
 from alphazero.SelfPlayAgent import SelfPlayAgent
 from alphazero.pytorch_classification.utils import Bar, AverageMeter
 from alphazero.utils import dotdict, get_game_results
 
-from statistics import mean, stdev
 from typing import Callable, List, Tuple, Optional
 from enum import Enum
 from queue import Empty
 
 import torch.multiprocessing as mp
+import numpy as np
 import torch
 import random
 import time
 
 
-class _PlayerWrapper:
-    def __init__(self, player, index):
-        self.player = player
+class _PlayerStats:
+    def __init__(self, index):
         self.index = index
         self.wins = 0
         self.winrate = 0
-
-    def __call__(self, *args, **kwargs):
-        return self.player(*args, **kwargs)
-
-    def process(self, *args, **kwargs):
-        return self.player.process(*args, **kwargs)
-
-    def update(self, *args, **kwargs):
-        self.player.update(*args, **kwargs)
-
-    def reset(self):
-        self.player.reset()
 
     def reset_wins(self):
         self.wins = 0
@@ -44,7 +29,7 @@ class _PlayerWrapper:
     def add_win(self):
         self.wins += 1
 
-    def update_winrate(self, draws, num_games):
+    def update(self, num_games, draws):
         if not num_games:
             self.winrate = 0
         else:
@@ -104,6 +89,7 @@ class Arena:
         self.display = display
         self.args = args.copy()
         self.use_batched_mcts = use_batched_mcts
+        self.__player_stats = None
         self.__players = None
         self.players = players
         self.games_played = 0
@@ -113,53 +99,44 @@ class Arena:
         self.eta = 0
         self.game_state = None
         self.draws = 0
-        self.winrates = [[]] * num_players
         self._agents = []
         self.stop_event = mp.Event()
         self.pause_event = mp.Event()
 
     @property
-    def players(self):
+    def players(self) -> List[BasePlayer]:
         return self.__players
 
     @players.setter
-    def players(self, value):
+    def players(self, value: List[BasePlayer]):
         self.__players = value
-        self.__init_players()
+        self.__player_stats = [_PlayerStats(i) for i in range(len(self.players))]
         self.__check_players_valid()
 
     def __check_players_valid(self):
-        if self.use_batched_mcts and not all(p.player.supports_process() for p in self.players):
+        if self.use_batched_mcts and not all(p.supports_process() for p in self.players):
             raise ValueError('Batched MCTS is not supported for players that do not support batch processing.')
 
-    def __init_players(self):
-        new_players = []
-        for i, player in enumerate(self.__players):
-            if not isinstance(player, _PlayerWrapper):
-                player = _PlayerWrapper(player, i)
-            new_players.append(player)
-        self.__players = new_players
-
-    def __reset_counts(self):
+    def __reset_stats(self):
         self.draws = 0
-        self.winrates = [[]] * len(self.__players)
-        [player.reset_wins() for player in self.players]
+        [s.reset_wins() for s in self.__player_stats]
 
     def __update_winrates(self):
-        num_games = sum([player.wins for player in self.players]) + (
+        num_games = sum([s.wins for s in self.__player_stats]) + (
             self.draws if self.args.use_draws_for_winrate else 0
         )
-        [player.update_winrate(
-            self.draws if self.args.use_draws_for_winrate else 0, num_games
-        ) for player in self.players]
+        [s.update(
+            num_games, self.draws if self.args.use_draws_for_winrate else 0
+        ) for s in self.__player_stats]
 
-        [self.winrates[player.index].append(player.winrate) for player in self.players]
+    def wins(self) -> List[int]:
+        return [s.wins for s in self.__player_stats]
 
-    def __sorted_players(self):
-        return iter(sorted(self.players, key=lambda p: p.index))
+    def winrates(self) -> List[float]:
+        return [s.winrate for s in self.__player_stats]
 
     @_set_state(ArenaState.SINGLE_GAME)
-    def play_game(self, verbose=False, _player_to_index: list = None) -> Tuple[GameState, np.ndarray]:
+    def play_game(self, verbose=False, _player_to_index: List[int] = None) -> Tuple[GameState, np.ndarray]:
         """
         Executes one episode of a game.
 
@@ -209,7 +186,7 @@ class Arena:
         return self.game_state, self.game_state.win_state()
 
     @_set_state(ArenaState.PLAY_GAMES)
-    def play_games(self, num: int, verbose=False, shuffle_players=True) -> Tuple[List[int], int, List[int]]:
+    def play_games(self, num: int, verbose=False, shuffle_players=True) -> Tuple[List[int], int, List[float]]:
         """
         Plays num games in which the order of the players
         is randomized for each game. The order is simply switched
@@ -226,20 +203,18 @@ class Arena:
         eps_time = AverageMeter()
         bar = Bar('Arena.play_games', max=num)
         end = time.time()
-        self.__reset_counts()
-
-        players = list(range(self.game_cls.num_players()))
-
-        def get_player_order():
-            if not shuffle_players: return
-            if len(players) == 2:
-                players.reverse()
-            else:
-                random.shuffle(players)
+        self.__reset_stats()
 
         if self.use_batched_mcts:
-            # TODO: fix batched arena possibly taking up to ~10x longer than self play
+            # TODO: fix batched arena possibly taking up to ~10x longer than normal self play
             self.__check_players_valid()
+
+            def empty_queue(q: mp.Queue):
+                for _ in range(q.qsize()):
+                    try:
+                        q.get_nowait()
+                    except Empty:
+                        break
 
             self.args.gamesPerIteration = num
             self._agents = []
@@ -259,8 +234,7 @@ class Arena:
             #    self.args.workers = mp.cpu_count() - 1
 
             for i in range(self.args.workers):
-                get_player_order()
-                input_tensors = [[] for _ in players]
+                input_tensors = [[] for _ in range(self.game_cls.num_players())]
                 batch_queues.append(mp.Queue())
 
                 policy_tensors.append(torch.zeros(
@@ -280,7 +254,7 @@ class Arena:
                     SelfPlayAgent(i, self.game_cls, ready_queue, batch_ready[i],
                                   input_tensors, policy_tensors[i], value_tensors[i], batch_queues[i],
                                   result_queue, completed, games_played, self.stop_event, self.pause_event, self.args,
-                                  _is_arena=True, _player_order=players.copy()))
+                                  _is_arena=True))
                 self._agents[i].daemon = True
                 self._agents[i].start()
 
@@ -320,14 +294,14 @@ class Arena:
                     _get_index=lambda p, i: self._agents[i].player_to_index[p]
                 )
                 for i, w in enumerate(wins):
-                    self.players[i].wins += w
+                    self.__player_stats[i].wins += w
                 self.draws += draws
                 self.__update_winrates()
 
                 bar.suffix = '({eps}/{maxeps}) Winrates: {wr} | Eps Time: {et:.3f}s | Total: {total:} | ETA: {eta:}' \
                     .format(
                         eps=size, maxeps=num, et=sample_time.avg, total=bar.elapsed_td, eta=bar.eta_td,
-                        wr=[round(w, 2) for w in list(zip(*self.winrates))[-1]]  # TODO: winrates for both players are the same
+                        wr=[round(w, 3) for w in self.winrates()]
                     )
                 bar.goto(size)
 
@@ -341,22 +315,10 @@ class Arena:
             bar.finish()
 
             # empty queues to prevent deadlock
-            for _ in range(ready_queue.qsize()):
-                try:
-                    ready_queue.get_nowait()
-                except Empty:
-                    break
-            for _ in range(result_queue.qsize()):
-                try:
-                    result_queue.get_nowait()
-                except Empty:
-                    break
-            for queue in batch_queues:
-                for _ in range(queue.qsize()):
-                    try:
-                        queue.get_nowait()
-                    except Empty:
-                        break
+            empty_queue(ready_queue)
+            empty_queue(result_queue)
+            for q in batch_queues:
+                empty_queue(q)
 
             # wait for all processes to finish
             for agent in self._agents:
@@ -366,6 +328,14 @@ class Arena:
                 del batch_ready[0]
 
         else:
+            players = list(range(self.game_cls.num_players()))
+            def get_player_order():
+                if not shuffle_players: return
+                if len(players) == 2:
+                    players.reverse()
+                else:
+                    random.shuffle(players)
+
             for eps in range(1, num + 1):
                 if self.stop_event.is_set():
                     break
@@ -384,7 +354,7 @@ class Arena:
                         if player == len(winstate) - 1:
                             self.draws += 1
                         else:
-                            self.players[players[player]].add_win()
+                            self.__player_stats[players[player]].add_win()
 
                 self.__update_winrates()
                 eps_time.update(time.time() - end)
@@ -392,7 +362,7 @@ class Arena:
                 bar.suffix = '({eps}/{maxeps}) Winrates: {wr} | Eps Time: {et:.3f}s | Total: {total:} | ETA: {eta:}' \
                     .format(
                         eps=eps, maxeps=num, et=eps_time.avg, total=bar.elapsed_td, eta=bar.eta_td,
-                        wr=[round(w, 2) for w in list(zip(*self.winrates))[-1]]
+                        wr=[round(w, 3) for w in self.winrates()]
                     )
                 bar.next()
                 self.games_played = eps
@@ -403,19 +373,4 @@ class Arena:
             bar.update()
             bar.finish()
 
-        wins = [player.wins for player in self.__sorted_players()]
-
-        if any(self.winrates):
-            winrates = list(zip(*self.winrates))[-1]
-        else:
-            winrates = []
-        return wins, self.draws, winrates
-
-    def get_winrate(self, player: int) -> Tuple[float, float]:
-        """Returns the winrate of the given player and its standard deviation."""
-        # TODO: test this
-        if not self.winrates:
-            raise ValueError('No games have been played yet.')
-
-        avg = mean(self.winrates[player])
-        return avg, stdev(self.winrates[player], avg)
+        return self.wins(), self.draws, self.winrates()

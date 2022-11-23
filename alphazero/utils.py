@@ -17,7 +17,7 @@ def get_iter_file(iteration: int):
 
 
 def scale_temp(scale_factor: float, min_temp: float, cur_temp: float, turns: int, const_max_turns: int) -> float:
-    if (turns + 1) % int(scale_factor * const_max_turns) == 0:
+    if const_max_turns and (turns + 1) % int(scale_factor * const_max_turns) == 0:
         return max(min_temp, cur_temp / 2)
     else:
         return cur_temp

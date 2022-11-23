@@ -1,4 +1,4 @@
-from alphazero import MCTSEvaluator, BaseEvaluator
+from alphazero.Evaluator import BaseEvaluator, MCTSEvaluator
 from alphazero.Game import GameState
 from alphazero.utils import map_value
 from PySide2 import QtCore, QtGui, QtWidgets
@@ -473,8 +473,10 @@ class GameWindow(QtWidgets.QWidget):
             if self.verbose:
                 self.running_label.setText(f'State: {"running" if self.evaluator.is_running else "idle"}')
                 self.value_label.setText('Value: %.4f' % value)
-                if hasattr(self.evaluator, '_mcts'):
-                    self.depth_label.setText('Depth: %d' % self.evaluator._mcts.max_depth)
+                if isinstance(self.evaluator, MCTSEvaluator):
+                    self.depth_label.setText(
+                        'Depth: %d' % self.evaluator.get_depth() + ', Sims: %d' % self.evaluator.get_num_sims()
+                    )
 
     def __update_eval_stats(self):
         if not self.use_evaluator or not self.num_best_actions:
@@ -487,12 +489,8 @@ class GameWindow(QtWidgets.QWidget):
             ))
 
         best_actions = self.evaluator.get_best_actions()
-        if best_actions:
-            if hasattr(self.evaluator, '_mcts'):
-                probs = self.evaluator._mcts.probs(self.evaluator.current_state,
-                                                   temp=self.evaluator.best_actions_temp)
-            else:
-                probs = None
+        if best_actions and self.evaluator.current_state is not None:
+            probs = self.evaluator.get_probs() if isinstance(self.evaluator, MCTSEvaluator) else None
 
             if callable(self.action_to_move):
                 best_actions = [
@@ -561,7 +559,9 @@ class CustomGUI(ABC):
     @abstractmethod
     def close(self):
         """Close the GUI window"""
-        pass
+        ...
+        if callable(self.on_window_close):
+            self.on_window_close()
 
     @abstractmethod
     def undo(self):
