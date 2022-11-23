@@ -18,9 +18,6 @@ NUM_CHANNELS = 4 if MULTI_PLANE_OBSERVATION else 1
 
 
 class Game(GameState):
-    """
-    Connect4 Game class implementing the alpha-zero-general Game interface.
-    """
     def __init__(self):
         super().__init__(self._get_board())
 
@@ -47,6 +44,10 @@ class Game(GameState):
         return MAX_TURNS
 
     @staticmethod
+    def has_draw() -> bool:
+        return True
+
+    @staticmethod
     def num_players() -> int:
         return NUM_PLAYERS
 
@@ -66,7 +67,7 @@ class Game(GameState):
         self._board.add_stone(action, (1, -1)[self.player])
         self._update_turn()
 
-    def win_state(self) -> Tuple[bool, ...]:
+    def win_state(self) -> np.ndarray:
         result = [False] * 3
         game_over, player = self._board.get_win_state()
 

@@ -49,16 +49,18 @@ class GameState(ABC):
     @staticmethod
     @abstractmethod
     def num_players() -> int:
-        """
-        Returns:
-            num_players: the number of total players participating in the game.
-        """
+        """Returns the number of total players participating in the game."""
         pass
 
     @staticmethod
     def max_turns() -> Optional[int]:
         """The maximum number of turns the game can last before a draw is declared."""
         return None
+
+    @staticmethod
+    def has_draw() -> bool:
+        """Returns True if the game has a draw condition."""
+        return True
 
     @property
     def player(self) -> int:
@@ -95,8 +97,7 @@ class GameState(ABC):
         """Get an observation from the game state in the form of a numpy array with the size of self.observation_size"""
         pass
 
-    @abstractmethod
-    def symmetries(self, pi) -> List[Tuple[Any, np.ndarray]]:
+    def symmetries(self, pi) -> List[Tuple['GameState', np.ndarray]]:
         """
         Args:
             pi: the current policy for the given canonical state
@@ -107,4 +108,6 @@ class GameState(ABC):
                         This is an optional method as symmetric samples
                         can be disabled for training.
         """
-        pass
+        raise NotImplementedError(
+            'Symmetries not implemented for this environment. Set symmetricSamples to False in args.'
+        )

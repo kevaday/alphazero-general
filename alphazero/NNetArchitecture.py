@@ -2,6 +2,9 @@ import torch.nn.functional as F
 import torch.nn as nn
 import torch
 
+from alphazero.Game import GameState
+from alphazero.utils import dotdict
+
 
 # 1x1 convolution
 def conv1x1(in_channels, out_channels, stride=1):
@@ -64,7 +67,7 @@ class ResidualBlock(nn.Module):
 
 
 class ResNet(nn.Module):
-    def __init__(self, game_cls, args):
+    def __init__(self, game_cls: GameState, args: dotdict):
         super(ResNet, self).__init__()
         # game params
         self.channels, self.board_x, self.board_y = game_cls.observation_size()
@@ -85,7 +88,7 @@ class ResNet(nn.Module):
         self.v_fc = mlp(
             self.board_x*self.board_y*args.value_head_channels,
             args.value_dense_layers,
-            game_cls.num_players() + 1,  # 1 for draw
+            game_cls.num_players() + game_cls.has_draw(),
             activation=nn.Identity
         )
 
@@ -123,7 +126,7 @@ class FullyConnected(nn.Module):
     The fully_connected function is used to create the network, as well as the
     policy and value heads. Forward method returns log_softmax of policy and value head.
     """
-    def __init__(self, game_cls, args):
+    def __init__(self, game_cls: GameState, args: dotdict):
         super(FullyConnected, self).__init__()
         # get input size
         self.input_size = sum(game_cls.observation_size())
@@ -137,7 +140,7 @@ class FullyConnected(nn.Module):
         self.v_fc = mlp(
             args.input_fc_layers[-1],
             args.value_dense_layers,
-            game_cls.num_players() + 1,
+            game_cls.num_players() + game_cls.has_draw(),
             activation=nn.Identity
         )
         self.pi_fc = mlp(

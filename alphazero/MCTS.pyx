@@ -59,7 +59,7 @@ cdef class Node:
     def __init__(self, int action, int num_players):
         self._children = []
         self.a = action
-        self.e = np.zeros(num_players + 1, dtype=np.uint8)
+        self.e = np.zeros(num_players, dtype=np.uint8)
         self.q = 0
         self.v = 0
         self.n = 0
@@ -289,7 +289,10 @@ cdef class MCTS:
         self._root.n += 1
 
     cpdef float _get_value(self, float[:] value, Py_ssize_t player, Py_ssize_t num_players):
-        return value[player] + value[num_players] / num_players
+        if value.size > num_players:
+            return value[player] + value[num_players] / num_players
+        else:
+            return value[player]
 
     cpdef int[:] counts(self, object gs):
         cdef int[:] counts = np.zeros(gs.action_size(), dtype=np.int32)

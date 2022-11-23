@@ -37,7 +37,7 @@ from numpy import get_include
 pyxinstall(setup_args={'include_dirs': get_include()})
 
 ERROR_INVALID_NAME = 123
-AUTO_END_TRAIN_TIME = 2
+AUTO_END_TRAIN_TIME = 10
 CUSTOM_GUI_UPDATE_INTERVAL = 33  # 33.33ms = 30fps
 GUI_MODULE_NAME = 'gui'
 EVAL_MAX_RUN_TIME = 10
@@ -708,13 +708,19 @@ class MainWindow(Ui_FormMainMenu):
         def init_table(arguments: dotdict):
             keys = []
             values = []
+
             for k, v in arguments.items():
+                if k.startswith('_'):
+                    # skip private fields to hide from user
+                    continue
+
                 keys.append(k)
                 if isinstance(v, str):
                     if CALLABLE_PREFIX in v:
                         values.append(v.replace(CALLABLE_PREFIX, ''))
                     else:
                         values.append(f'"{v}"')
+
                 elif callable(v):
                     values.append(v.__name__)
                 else:

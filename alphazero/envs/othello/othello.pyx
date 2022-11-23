@@ -9,6 +9,7 @@ import numpy as np
 NUM_PLAYERS = 2
 NUM_CHANNELS = 1
 BOARD_SIZE = 8
+MAX_TURNS = BOARD_SIZE * BOARD_SIZE
 ACTION_SIZE = BOARD_SIZE ** 2
 OBSERVATION_SIZE = (NUM_CHANNELS, BOARD_SIZE, BOARD_SIZE)
 
@@ -20,7 +21,7 @@ class Game(GameState):
     def __hash__(self) -> int:
         return hash(self._board.pieces.tobytes() + bytes([self.turns]) + bytes([self._player]))
 
-    def __eq__(self, other: 'GameState') -> bool:
+    def __eq__(self, other: 'Game') -> bool:
         return (
             np.asarray(self._board.pieces) == np.asarray(other._board.pieces)
             and self._player == other._player
@@ -53,6 +54,14 @@ class Game(GameState):
     def num_players() -> int:
         return NUM_PLAYERS
 
+    @staticmethod
+    def max_turns() -> int:
+        return MAX_TURNS
+
+    @staticmethod
+    def has_draw() -> bool:
+        return True
+
     def _player_range(self):
         return (1, -1)[self.player]
 
@@ -66,31 +75,32 @@ class Game(GameState):
         return np.array(valids, dtype=np.intc)
 
     def play_action(self, action: int) -> None:
+        super().play_action(action)
         move = (action // self._board.n, action % self._board.n)
         self._board.execute_move(move, self._player_range())
         self._update_turn()
 
-    def win_state(self) -> Tuple[bool, ...]:
+    def win_state(self) -> np.ndarray:
         result = [False] * (NUM_PLAYERS + 1)
         player = self._player_range()
 
-        if self._board.has_legal_moves(player):
-            return tuple(result)
-        elif self._board.has_legal_moves(-player):
-            return tuple(result)
-        elif self._board.count_diff(player) > 0:
-            result[self.player] = True
-        else:
-            result[self._next_player(self.player)] = True
+        if not self._board.has_legal_moves(player):
+            diff = self._board.count_diff(player)
+            if diff > 0:
+                result[self.player] = True
+            elif diff < 0:
+                result[self._next_player(self.player)] = True
+            else:
+                result[NUM_PLAYERS] = True
 
-        return tuple(result)
+        return np.array(result, dtype=np.uint8)
 
     def observation(self):
         return np.expand_dims(np.asarray(self._board.pieces), axis=0)
 
     def symmetries(self, pi) -> List[Tuple[Any, int]]:
         # mirror, rotational
-        assert (len(pi) == self._board.n ** 2)
+        assert len(pi) == self._board.n ** 2
 
         pi_board = np.reshape(pi, (self._board.n, self._board.n))
         result = []

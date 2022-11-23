@@ -24,6 +24,7 @@ ctypedef np.uint8_t DTYPE_t
 cdef int NUM_PLAYERS = 2
 cdef int BOARD_SIZE = 15
 cdef int NUM_IN_ROW = 5
+cdef int MAX_MOVES = BOARD_SIZE ** 2
 
 cdef int ACTION_SIZE = BOARD_SIZE ** 2
 cdef bint MULTI_PLANE_OBSERVATION = True
@@ -96,6 +97,14 @@ cdef class Game:#(GameState):
     @staticmethod
     def observation_size():
         return OBSERVATION_SIZE
+
+    @staticmethod
+    def max_turns():
+        return MAX_MOVES
+
+    @staticmethod
+    def has_draw():
+        return True
 
     cpdef np.ndarray valid_moves(self):
         # return a fixed size binary vector

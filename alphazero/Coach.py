@@ -32,7 +32,7 @@ DEFAULT_ARGS = dotdict({
     'train_batch_size': 1024,
     'arena_batch_size': 64,
     'train_steps_per_iteration': 64,
-    'train_sample_ratio': 2,
+    'train_sample_ratio': 1,
     'averageTrainSteps': False,
     'autoTrainSteps': True,   # Calculates the average number of samples in the training window
                               # if averageTrainSteps set to True, otherwise uses the latest
@@ -47,8 +47,6 @@ DEFAULT_ARGS = dotdict({
     'minTrainHistoryWindow': 4,
     'maxTrainHistoryWindow': 20,
     'trainHistoryIncrementIters': 2,
-    'max_moves': 128,  # Make sure to change this to a correct value for your env,
-                       # as the default temperature scaling is based on the max game length.
     '_num_players': None,  # Doesn't have to be changed, set automatically by the env.
     'min_discount': 1,
     'fpu_reduction': 0.2,
@@ -160,7 +158,7 @@ class Coach:
         self.train_net = nnet
         self.self_play_net = nnet.__class__(game_cls, args)
         self.args = args
-        self.args._num_players = self.game_cls.num_players()
+        self.args._num_players = self.game_cls.num_players() + self.game_cls.has_draw()
         
         train_iter = self.args.startIter
 

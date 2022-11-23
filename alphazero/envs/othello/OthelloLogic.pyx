@@ -18,11 +18,11 @@ Squares are stored and manipulated as (x,y) tuples.
 x is the column, y is the row.
 """
 
-cimport cython
 import numpy as np
 
 # list of all 8 directions on the board, as (x,y) offsets
 cdef list __directions = [(1,1),(1,0),(1,-1),(0,-1),(-1,-1),(-1,0),(-1,1),(0,1)]
+cdef (Py_ssize_t, Py_ssize_t) null_point = (-1, -1)
 
 cdef class Board:
     cdef public int n
@@ -64,24 +64,19 @@ cdef class Board:
 
         for y in range(self.n):
             for x in range(self.n):
-                if self.pieces[x,y] == color:
-                    count += 1
-                if self.pieces[x,y] == -color:
-                    count -= 1
+                count += self.pieces[x,y] * color
 
         return count
 
     cpdef set get_legal_moves(self, int color):
-        """Returns all the legal moves for the given color.
-        (1 for white, -1 for black
-        """
+        """Returns all the legal moves for the given color."""
         cdef set moves = set()  # stores the legal moves.
-
-        # Get all the squares with pieces_raw of the given color.
         cdef Py_ssize_t x, y
+
+        # Get all the squares of the given color.
         for y in range(self.n):
             for x in range(self.n):
-                if self.pieces[x,y]==color:
+                if self.pieces[x,y] == color:
                     moves.update(self.get_moves_for_square((x,y)))
         return moves
 
@@ -116,7 +111,7 @@ cdef class Board:
         cdef (Py_ssize_t, Py_ssize_t) move
         for direction in __directions:
             move = self._discover_move(square, direction)
-            if move != (-1, -1):
+            if move != null_point:
                 # print(square,move,direction)
                 moves.append(move)
 
@@ -134,9 +129,10 @@ cdef class Board:
         # Add the piece to the empty square.
         # print(move)
         cdef list flips = [flip for direction in __directions
-                      for flip in self._get_flips(move, direction, color)]
-        assert len(list(flips))>0
+                           for flip in self._get_flips(move, direction, color)]
+        #assert len(list(flips))>0
         cdef Py_ssize_t x, y
+
         for x, y in flips:
             #print(self.pieces_raw[x,y],color)
             self.pieces[x,y] = color
@@ -151,17 +147,20 @@ cdef class Board:
 
         for x, y in Board._increment_move(origin, direction, self.n):
             if self.pieces[x,y] == 0:
-                if flips != []:
+                if flips:
                     # print("Found", x,y)
-                    return (x, y)
+                    return x, y
                 else:
-                    return (-1, -1)
+                    return null_point
+
             elif self.pieces[x,y] == color:
-                return (-1, -1)
+                return null_point
+
             elif self.pieces[x,y] == -1*color:
                 # print("Flip",x,y)
                 flips.append((x, y))
-        return (-1, -1)
+
+        return null_point
 
     cdef list _get_flips(self, (Py_ssize_t, Py_ssize_t) origin, (Py_ssize_t, Py_ssize_t) direction, int color):
         """ Gets the list of flips for a vertex and direction to use with the
@@ -184,15 +183,16 @@ cdef class Board:
 
     @staticmethod
     cdef list _increment_move((Py_ssize_t, Py_ssize_t) move, (Py_ssize_t, Py_ssize_t) direction, int n):
-        # print(move)
         """ Generator expression for incrementing moves """
         #move = list(map(sum, zip(move, direction)))
         cdef list moves = []
+
         move = (move[0]+direction[0], move[1]+direction[1])
         #while all(map(lambda x: 0 <= x < n, move)): 
-        while 0<=move[0] and move[0]<n and 0<=move[1] and move[1]<n:
+        while 0 <= move[0] < n and 0 <= move[1] < n:
             moves.append(move)
             #move=list(map(sum,zip(move,direction)))
             move = (move[0]+direction[0],move[1]+direction[1])
+
         return moves
 
