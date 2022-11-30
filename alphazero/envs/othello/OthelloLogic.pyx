@@ -44,7 +44,9 @@ cdef class Board:
 
 			x += direction[0]
 			y += direction[1]
-			while x < self.n and y < self.n:
+
+			while x < self.n and y < self.n and x >= 0 and y >= 0:
+
 				if self.pieces[x,y] == -color:
 					flips.append((x,y))
 					x += direction[0]
