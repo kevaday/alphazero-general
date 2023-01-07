@@ -112,8 +112,8 @@ DEFAULT_ARGS = dotdict({
 
     # fc only uses the following
     'input_fc_layers': [1024] * 4,  # only for fc networks
-    'value_dense_layers': [512, 64],
-    'policy_dense_layers': [512, 256]
+    'value_dense_layers': [1024, 512],
+    'policy_dense_layers': [1024, 512]
 })
 
 
@@ -157,6 +157,8 @@ class Coach:
         self.game_cls = game_cls
         self.train_net = nnet
         self.self_play_net = nnet.__class__(game_cls, args)
+        self.elo_play_net = nnet.__class__(game_cls, args)
+        self.elo_play_net_2 = nnet.__class__(game_cls, args)
         self.args = args
         self.args._num_players = self.game_cls.num_players() + self.game_cls.has_draw()
         
@@ -171,6 +173,7 @@ class Coach:
 
             train_iter = self.args.startIter - 1
             self._load_model(self.train_net, train_iter)
+            del networks
 
         if self.args.selfPlayModelIter == 0:
             self.self_play_iter = 0
@@ -238,10 +241,13 @@ class Coach:
                     if self.model_iter <= self.args.numWarmupIters:
                         print('Warmup: random policy and value')
                         self.warmup = True
-#                     elif self.self_play_iter == 0:
-#                         self.warmup = True
+                    # elif self.self_play_iter == 0:
+                    #     self.warmup = True
                     elif self.warmup:
                         self.warmup = False
+
+                    if self.warmup:
+                        print('Warmup: random policy and value')
 
                     self.generateSelfPlayAgents()
                     self.processSelfPlayBatches(self.model_iter)
@@ -270,7 +276,7 @@ class Coach:
                     self.compareToPast(self.model_iter)
                     if self.stop_train.is_set():
                         break
-
+                self.calculateElo()
                 # z = self.args.expertValueWeight
                 # self.args.expertValueWeight.current = min(
                 #     self.model_iter, z.iterations) / z.iterations * (z.end - z.start) + z.start
@@ -524,6 +530,92 @@ class Coach:
 
         self._save_model(self.train_net, iteration)
 
+    def calculateElo(self):
+        if not os.path.exists("elo/"+self.args.run_name):
+            os.makedirs("elo/"+self.args.run_name)
+        networks = sorted(glob(self.args.checkpoint + '/' + self.args.run_name + '/*'))
+        if self.model_iter == 1:
+            np.savetxt("elo/"+self.args.run_name+"/ELOS.csv", [[0]], delimiter=",")
+
+        elos = np.loadtxt('elo/'+self.args.run_name+'/ELOS.csv', delimiter=',')
+        elos = [elos]
+        elos = np.array(elos).flatten()
+        print(elos)
+        # current_elo = elos[len(elos)-1]
+        current_elo = 0
+
+        sf_args = self.args.copy()
+        sf_args.numMCTSSims = 15
+        cls = MCTSPlayer if self.args.arenaMCTS else NNPlayer
+        nplayer = cls(self.train_net, self.game_cls, sf_args)
+        running_score = 0
+        running_expectation = 0
+        for i in np.random.randint(len(elos), size=10):
+            print(f'PITTING AGAINST ITERATION {i} FOR ELO CALCULATION ')
+            opponent_elo = elos[i]
+            self._load_model(self.elo_play_net, i)
+            pplayer = cls(self.elo_play_net, self.game_cls, sf_args)
+            players = [nplayer] + [pplayer] * (self.game_cls.num_players() - 1)
+            self.arena = Arena(players, self.game_cls, use_batched_mcts=False, args=sf_args)
+            wins, draws, winrates = self.arena.play_games(10, verbose=False)
+
+            expected_score = 1/(1+10**( (opponent_elo-current_elo)/400 ))
+            actual_score = (wins[0] + 0.5*draws)#/(wins[0]+wins[1]+draws)
+            running_expectation += 10*expected_score
+            running_score += actual_score
+            #current_elo = current_elo + 32*(actual_score - 10*expected_score)
+
+        current_elo = current_elo + 32*(running_score - running_expectation)
+        elos = np.append(elos, current_elo)
+        np.savetxt("elo/"+self.args.run_name+"/ELOS.csv", [elos], delimiter=",")
+        print(f'Self play ELO: {current_elo}')
+        self.writer.add_scalar('elo/self_play_elo', current_elo, self.model_iter)
+
+    def calculateEloSus(self, m):
+        if not os.path.exists("elo/"+self.args.run_name):
+            os.makedirs("elo/"+self.args.run_name)
+        networks = sorted(glob(self.args.checkpoint + '/' + self.args.run_name + '/*'))
+        if m == 1:
+            np.savetxt("elo/"+self.args.run_name+"/ELOS.csv", [[0]], delimiter=",")
+
+        elos = np.loadtxt('elo/'+self.args.run_name+'/ELOS.csv', delimiter=',')
+        elos = [elos]
+        elos = np.array(elos).flatten()
+        print(elos)
+        # current_elo = elos[len(elos)-1]
+        current_elo = 0
+
+        sf_args = self.args.copy()
+        sf_args.numMCTSSims = 15
+        self._load_model(self.train_net, m)
+        cls = MCTSPlayer if self.args.arenaMCTS else NNPlayer
+        nplayer = cls(self.train_net, self.game_cls, sf_args)
+        running_score = 0
+        running_expectation = 0
+        for i in np.random.randint(len(elos), size=5):
+            print(f'PITTING AGAINST ITERATION {i}')
+            opponent_elo = elos[i]
+            self._load_model(self.elo_play_net, i)
+            pplayer = cls(self.elo_play_net, self.game_cls, sf_args)
+            players = [nplayer] + [pplayer] * (self.game_cls.num_players() - 1)
+            self.arena = Arena(players, self.game_cls, use_batched_mcts=False, args=sf_args)
+            wins, draws, winrates = self.arena.play_games(10, verbose=False)
+
+            expected_score = 1/(1+10**( (opponent_elo-current_elo)/400 ))
+            actual_score = (wins[0] + 0.5*draws)#/(wins[0]+wins[1]+draws)
+            running_expectation += 10*expected_score
+            running_score += actual_score
+            #current_elo = current_elo + 32*(actual_score - 10*expected_score)
+
+        current_elo = current_elo + 32*(running_score - running_expectation)
+        elos = np.append(elos, current_elo)
+        np.savetxt("elo/"+self.args.run_name+"/ELOS.csv", [elos], delimiter=",")
+        print(f'Self play ELO: {current_elo}')
+        #self.writer.add_scalar('elo/self_play_elo_3', current_elo, m)
+
+    def randomPreviousGames(self, iter):
+        pass
+
     @_set_state(TrainState.COMPARE_PAST)
     def compareToPast(self, model_iter):
         self._load_model(self.self_play_net, self.self_play_iter)
@@ -541,12 +633,14 @@ class Coach:
         #     cls = MCTSPlayer if self.args.arenaMCTS else NNPlayer
         #     nplayer = cls(self.game_cls, self.args, self.train_net)
         #     pplayer = cls(self.game_cls, self.args, self.self_play_net)
+        sf_args = self.args.copy()
+        sf_args.numMCTSSims = 15
         cls = MCTSPlayer if self.args.arenaMCTS else NNPlayer
-        nplayer = cls(self.train_net, self.game_cls, self.args)
-        pplayer = cls(self.self_play_net, self.game_cls, self.args)
+        nplayer = cls(self.train_net, self.game_cls, sf_args)
+        pplayer = cls(self.self_play_net, self.game_cls, sf_args)
 
         players = [nplayer] + [pplayer] * (self.game_cls.num_players() - 1)
-        self.arena = Arena(players, self.game_cls, use_batched_mcts=self.args.arenaBatched, args=self.args)
+        self.arena = Arena(players, self.game_cls, use_batched_mcts=False, args=sf_args)
         wins, draws, winrates = self.arena.play_games(self.args.arenaCompare)
         if self.stop_train.is_set(): return
         winrate = winrates[0]
@@ -564,6 +658,7 @@ class Coach:
         ):
             self.gating_counter += 1
         elif self.args.model_gating:
+            print("No Gating")
             self.self_play_iter = model_iter
             self._load_model(self.self_play_net, self.self_play_iter)
             self.gating_counter = 0
@@ -573,14 +668,16 @@ class Coach:
 
     @_set_state(TrainState.COMPARE_BASELINE)
     def compareToBaseline(self, iteration):
+        sf_args = self.args.copy()
+        sf_args.numMCTSSims = 15
         test_player = self.args.baselineTester(self.game_cls, self.args)
         can_process = test_player.supports_process() and self.args.arenaBatched
-        nnplayer = (MCTSPlayer if self.args.arenaMCTS else NNPlayer)(self.train_net, self.game_cls, self.args)
+        nnplayer = (MCTSPlayer if self.args.arenaMCTS else NNPlayer)(self.train_net, self.game_cls, sf_args)
 
         print('PITTING AGAINST BASELINE: ' + self.args.baselineTester.__name__)
 
         players = [nnplayer] + [test_player] * (self.game_cls.num_players() - 1)
-        self.arena = Arena(players, self.game_cls, use_batched_mcts=can_process, args=self.args)
+        self.arena = Arena(players, self.game_cls, use_batched_mcts=False, args=sf_args)
         wins, draws, winrates = self.arena.play_games(self.args.arenaCompare)
         if self.stop_train.is_set(): return
         winrate = winrates[0]

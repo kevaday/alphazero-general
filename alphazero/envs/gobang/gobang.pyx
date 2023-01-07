@@ -53,6 +53,9 @@ cdef class Game:#(GameState):
     @staticmethod
     def _get_board(*args, **kwargs) -> Board:
         return Board(BOARD_SIZE, NUM_IN_ROW, *args, **kwargs)
+        
+    def display(self):
+        display(self)
 
     def __eq__(self, other: 'Game') -> bool:
         return (

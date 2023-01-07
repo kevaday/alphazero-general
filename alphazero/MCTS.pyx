@@ -209,7 +209,6 @@ cdef class MCTS:
         self.depth = 0
         self._curnode = self._root
         cdef object leaf = gs.clone()
-
         while self._curnode.n > 0 and not self._curnode.e.any():
             self._path.append(self._curnode)
             self._curnode = self._curnode.best_child(self.fpu_reduction, self.cpuct)

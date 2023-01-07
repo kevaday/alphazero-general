@@ -4,7 +4,7 @@ import torch
 
 from alphazero.Game import GameState
 from alphazero.utils import dotdict
-
+import numpy as np
 
 # 1x1 convolution
 def conv1x1(in_channels, out_channels, stride=1):
@@ -129,7 +129,7 @@ class FullyConnected(nn.Module):
     def __init__(self, game_cls: GameState, args: dotdict):
         super(FullyConnected, self).__init__()
         # get input size
-        self.input_size = sum(game_cls.observation_size())
+        self.input_size = np.prod(game_cls.observation_size())
 
         self.input_fc = mlp(
             self.input_size,
@@ -146,7 +146,7 @@ class FullyConnected(nn.Module):
         self.pi_fc = mlp(
             args.input_fc_layers[-1],
             args.policy_dense_layers,
-            self.game_cls.action_size(),
+            game_cls.action_size(),
             activation=nn.Identity
         )
 
@@ -154,7 +154,6 @@ class FullyConnected(nn.Module):
         # s: batch_size x num_channels x board_x x board_y
         # reshape s for input_fc
         s = s.view(-1, self.input_size)
-
         s = self.input_fc(s)
         v = self.v_fc(s)
         pi = self.pi_fc(s)

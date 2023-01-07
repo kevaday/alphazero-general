@@ -183,7 +183,6 @@ class RawMCTSPlayer(MCTSPlayer):
         self.temp = self.args.temp_scaling_fn(self.temp, state.turns, state.max_turns())
         policy = self.mcts.probs(state, self.temp)
         action = np.random.choice(len(policy), p=policy)
-
         if self.verbose:
             print('max tree depth:', self.mcts.max_depth)
             print(f'value for player {state.player}: {self.mcts.value(self.average_value)}')
