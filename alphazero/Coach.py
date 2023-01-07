@@ -238,8 +238,8 @@ class Coach:
                     if self.model_iter <= self.args.numWarmupIters:
                         print('Warmup: random policy and value')
                         self.warmup = True
-                    elif self.self_play_iter == 0:
-                        self.warmup = True
+#                     elif self.self_play_iter == 0:
+#                         self.warmup = True
                     elif self.warmup:
                         self.warmup = False
 
