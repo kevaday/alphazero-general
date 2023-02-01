@@ -93,11 +93,11 @@ class Game(GameState):
 		player = self._player_range()
 
 		if len(self._board.get_legal(1)) == 0 and len(self._board.get_legal(-1)) == 0:
-			pieces_turn = self._board.get_total(self._player_range())
-			pieces_other = self._board.get_total(-self._player_range())
-			if pieces_turn > pieces_other:
+			p1 = self._board.get_total(1)
+			p2 = self._board.get_total(-1)
+			if p2 > p1:
 				result[0] = True
-			elif pieces_turn < pieces_other:
+			elif p2 < p1:
 				result[1] = True
 			else:
 				result[2] = True

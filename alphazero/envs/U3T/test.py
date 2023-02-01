@@ -72,60 +72,41 @@ args.add_root_noise = args.add_root_temp = False
 args.fpu_reduction = 0
 
 G = Game()
-
-# G._board.pieces[0][0][0][0] = -1
-# G._board.pieces[0][0][0][1] = -1
-# G._board.pieces[0][0][0][2] = 1
-
-# G._board.pieces[0][0][1][0] = 1
-# G._board.pieces[0][0][1][1] = 1
-# G._board.pieces[0][0][1][2] = -1
-
-# G._board.pieces[0][0][2][0] = -1
-# G._board.pieces[0][0][2][1] = 1
-# G._board.pieces[0][0][2][2] = -1
-
 print(G.observation())
-# G.display()
-# v = G.valid_moves()
-# for i in range(len(v)):
-#     if v[i] == 1:
-#         print(G._board.num_to_point(i), i)
-# print(G._board.get_all_open())
-# for i in range(81):
-#     print(G._board.point_to_num(*G._board.num_to_point(i)))
+nn = NNet(Game, args)
+nn.load_checkpoint('./checkpoint/U3T', 'iteration-0060.pkl')
+
+P = MCTSPlayer(nn, args=args)
+P2 = RawMCTSPlayer(Game, args)
+turn = 1
+
+for i in range(81):
+    if turn == 1:
+        a = P.play(G)
+        G.play_action(a)
+        POINT = G._board.num_to_point(a)
+        print("AZ played", POINT)
+        B = np.asarray(G._board.pieces)
+        print(B[POINT[0]][POINT[1]])
+        #P.update(G, a)
+    else:
+        #a = P2.play(G)
+        v = G.valid_moves()
+        for i in range(len(v)):
+            if v[i] == 1:
+                print(G._board.num_to_point(i), i)
+        a = int(input(">>>"))#P2.play(G)
+        G.play_action(a)
+        
 
 
-
-# nn = NNet(Game, args)
-# nn.load_checkpoint('./checkpoint/U3T', 'iteration-0060.pkl')
-
-# P = MCTSPlayer(nn, args=args)
-# P2 = RawMCTSPlayer(Game, args)
-# turn = 1
-
-# for i in range(81):
-#     if turn == 1:
-#         a = P.play(G)
-#         G.play_action(a)
-#         print("AZ played", G._board.num_to_point(a))
-#         #P.update(G, a)
-#     else:
-#         a = P2.play(G)
-#         # v = G.valid_moves()
-#         # for i in range(len(v)):
-#         #     if v[i] == 1:
-#         #         print(G._board.num_to_point(i), i)
-#         # a = int(input(">>>"))#P2.play(G)
-#         G.play_action(a)
-#     P2.update(G, a)
-#     P.update(G, a)
+    P.update(G, a)
     
-#     #print(G.observation())
-#     G.display()
+    #print(G.observation())
+    G.display()
 	
-#     if np.any(G.win_state()):
-#         print(np.asarray(G._board.pieces))
-#         print(G.win_state())
-#         break
-#     turn *= -1
+    if np.any(G.win_state()):
+        print(np.asarray(G._board.pieces))
+        print(G.win_state())
+        break
+    turn *= -1

@@ -14,10 +14,10 @@ args = get_args(dotdict({
     'startIter': 1,
     'numIters': 1000,
     'numWarmupIters': 1,
-    'process_batch_size': 256,
+    'process_batch_size': 512,
     'train_batch_size': 512,
     # should preferably be a multiple of process_batch_size and workers
-    'gamesPerIteration': 256 * 7,
+    'gamesPerIteration': 512 * 7,
     'symmetricSamples': True,
     'skipSelfPlayIters': None,
     'selfPlayModelIter': None,
@@ -26,17 +26,17 @@ args = get_args(dotdict({
     'probFastSim': 0.55,
     'compareWithBaseline': True,
     'arenaCompareBaseline': 10,
-    'arenaCompare': 32,
+    'arenaCompare': 16,
     'arena_batch_size': 128,
     'arenaTemp': 1,
     'arenaMCTS': True,
-    'baselineCompareFreq': 3,
+    'baselineCompareFreq': 1,
     'compareWithPast': True,
     'pastCompareFreq': 10,
     'cpuct': 1.75,
     'fpu_reduction': 0.4,
     'load_model': True,
-    'root_noise_frac': 0.3,
+    'root_noise_frac': 0.35,
     'min_next_model_winrate': 0.54,
     'root_policy_temp': 1.3,
     'train_on_past_data': False,
@@ -58,7 +58,7 @@ args = get_args(dotdict({
     value_dense_layers=[2048, 1024, 512],
     policy_dense_layers=[2048, 512]
     )
-args.scheduler_args.milestones = [150, 225]
+args.scheduler_args.milestones = [60, 120]
 
 
 

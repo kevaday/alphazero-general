@@ -22,7 +22,7 @@ DTYPE = np.uint8
 ctypedef np.uint8_t DTYPE_t
 
 cdef int NUM_PLAYERS = 2
-cdef int BOARD_SIZE = 15
+cdef int BOARD_SIZE = 8
 cdef int NUM_IN_ROW = 5
 cdef int MAX_MOVES = BOARD_SIZE ** 2
 

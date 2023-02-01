@@ -18,6 +18,7 @@ You may join the [Discord server](https://discord.gg/MVaHwGZpRC) if you wish to 
 7. **Warmup Iterations:** A few self play iterations in the beginning of training can optionnally be done using random policy and value to speed up initial generation of training data instead of using a model that is initally random anyways. This makes these iterations purely CPU-bound.
 8. **Root Dirichlet Noise & Root Temperature, Discount:** Allows for better exploration and MCTS doesn't get stuck in local minima as often. Discount allows AlphaZero to "understand" the concept of time and chooses actions which lead to a win more quickly/efficiently as opposed to choosing a win that would occur later on in the game.
 9. **More Adjustable Parameters:** This implementation allows for the modification of numerous hyperparameters, allowing for substantial control over the training process. More on hyperparameters below where the usage of some are discussed.
+10. **Self-Play Elo Calculation:** This implementation will calculate self play elo at the end of each iteration providing better insight to the strength of the agent, contributed by [Bobingstern](https://github.com/Bobingstern/alphazero-general).
 
 ## Getting Started
 ### Install required packages
@@ -95,6 +96,12 @@ As a general guideline, game engine files/other potential bottlenecks should be 
 **`cpuct`:** A constant for balancing exploration vs exploitation in the MCTS algorithm. A higher number promotes more exploration of new actions whereas a lower one promotes exploitation of previously known good actions. A normal range is between 1-4, depending on the environment; a game with less possible moves on each turn would need a lower CPUCT.
 
 **`fpu_reduction`:** "First Play Urgency" reduction decreases the initialization Q value of an unvisited node by this factor, must be in the range `[-1, 1]`. The closer this value is to 1, it discourages MCTS to explore unvisited nodes further, which (hopefully) allows it to explore paths that are more familiar. If this is set to 0, no reduction is done and unvisited nodes inherit their parent's Q value. Closer to a value of -1 (not recommended to go below 0), unvisited nodes become more prefered which can lead to more exploration.
+
+**`eloMCTS`:** Number of MCTS simulations to use for elo calculation games. Recommended to be less than that of `numMCTSSims` since elo calculation can be very expensive
+
+**`eloGames`:** Number of games to play against each previous iteration for elo calculation. Recommended to be around 10-20 but the more the better although it will take longer.
+
+**`eloMatches`:** Number of previous iterations to play against. Sampled uniformly from the number of completed iterations. Default is 10.
 
 **`num_channels`:** The number of channels each ResNet convolution block has.
 

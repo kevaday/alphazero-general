@@ -70,6 +70,11 @@ DEFAULT_ARGS = dotdict({
     'baselineTester': RawMCTSPlayer,
     'arenaCompareBaseline': 128,
     'arenaCompare': 128,
+    'eloMCTS': 15,
+    'eloGames':10,
+    'eloMatches':10,
+    'eloUniform': False,
+    'calculateElo': True,
     'arenaTemp': 0.25,
     'arenaMCTS': True,
     'arenaBatched': True,
@@ -212,7 +217,6 @@ class Coach:
         else:
             self.writer = SummaryWriter()
         # self.args.expertValueWeight.current = self.args.expertValueWeight.start
-    
     def _load_model(self, model, iteration):
         model.load_checkpoint(
             folder=os.path.join(self.args.checkpoint, self.args.run_name),
@@ -276,7 +280,11 @@ class Coach:
                     self.compareToPast(self.model_iter)
                     if self.stop_train.is_set():
                         break
-                self.calculateElo()
+
+                # if (self.model_iter % 3 == 0 and self.model_iter > 1):
+                #     self.tuneHyperparams(5)
+                if self.args.calculateElo:
+                    self.calculateElo()
                 # z = self.args.expertValueWeight
                 # self.args.expertValueWeight.current = min(
                 #     self.model_iter, z.iterations) / z.iterations * (z.end - z.start) + z.start
@@ -540,24 +548,44 @@ class Coach:
         elos = np.loadtxt('elo/'+self.args.run_name+'/ELOS.csv', delimiter=',')
         elos = [elos]
         elos = np.array(elos).flatten()
-        print(elos)
+        # print(elos)
         # current_elo = elos[len(elos)-1]
         current_elo = 0
 
         sf_args = self.args.copy()
-        sf_args.numMCTSSims = 15
+        sf_args.numMCTSSims = self.args.eloMCTS
         cls = MCTSPlayer if self.args.arenaMCTS else NNPlayer
         nplayer = cls(self.train_net, self.game_cls, sf_args)
         running_score = 0
         running_expectation = 0
-        for i in np.random.randint(len(elos), size=10):
+
+        #Sample from harmonic distribution because integral calculus of 
+        #normal distribution is nasty and i dont like the error function
+        #Not used, but testing it out. Currently it is just a uniform sampling
+        def harmonic(n):
+            a = 0
+            for i in range(0, n):
+                a += 1/(1+i)
+            return a
+
+        num_games = self.args.eloMatches
+        harmonic_coef = 1/harmonic(len(elos))
+        probs = harmonic_coef / (1+np.arange(0, len(elos)))
+
+        #opponents = np.random.choice(np.flip(np.arange(0, len(elos))), p=probs, size=num_games)
+        
+        opponents = np.random.choice(np.arange(0, len(elos)), size=num_games)
+        if self.args.eloUniform:
+            opponents = np.arange(max(0, len(elos)-num_games), len(elos))
+        print(f"Pitting against the following iters:{opponents}")
+        for i in opponents:
             print(f'PITTING AGAINST ITERATION {i} FOR ELO CALCULATION ')
             opponent_elo = elos[i]
             self._load_model(self.elo_play_net, i)
             pplayer = cls(self.elo_play_net, self.game_cls, sf_args)
             players = [nplayer] + [pplayer] * (self.game_cls.num_players() - 1)
             self.arena = Arena(players, self.game_cls, use_batched_mcts=False, args=sf_args)
-            wins, draws, winrates = self.arena.play_games(10, verbose=False)
+            wins, draws, winrates = self.arena.play_games(self.args.eloGames, verbose=False)
 
             expected_score = 1/(1+10**( (opponent_elo-current_elo)/400 ))
             actual_score = (wins[0] + 0.5*draws)#/(wins[0]+wins[1]+draws)
@@ -566,55 +594,147 @@ class Coach:
             #current_elo = current_elo + 32*(actual_score - 10*expected_score)
 
         current_elo = current_elo + 32*(running_score - running_expectation)
+        current_elo = max(current_elo, 0)
         elos = np.append(elos, current_elo)
         np.savetxt("elo/"+self.args.run_name+"/ELOS.csv", [elos], delimiter=",")
         print(f'Self play ELO: {current_elo}')
         self.writer.add_scalar('elo/self_play_elo', current_elo, self.model_iter)
 
-    def calculateEloSus(self, m):
-        if not os.path.exists("elo/"+self.args.run_name):
-            os.makedirs("elo/"+self.args.run_name)
-        networks = sorted(glob(self.args.checkpoint + '/' + self.args.run_name + '/*'))
-        if m == 1:
-            np.savetxt("elo/"+self.args.run_name+"/ELOS.csv", [[0]], delimiter=",")
+    # def calculateEloChkp(self, m):
+    #     if not os.path.exists("elo/"+self.args.run_name):
+    #         os.makedirs("elo/"+self.args.run_name)
+    #     networks = sorted(glob(self.args.checkpoint + '/' + self.args.run_name + '/*'))
+    #     if m == 1:
+    #         np.savetxt("elo/"+self.args.run_name+"/ELOS.csv", [[0]], delimiter=",")
 
+    #     elos = np.loadtxt('elo/'+self.args.run_name+'/ELOS.csv', delimiter=',')
+    #     elos = [elos]
+    #     elos = np.array(elos).flatten()
+    #     print(elos)
+    #     # current_elo = elos[len(elos)-1]
+    #     current_elo = 0
+
+    #     sf_args = self.args.copy()
+    #     sf_args.numMCTSSims = 15
+    #     self._load_model(self.train_net, m)
+    #     cls = MCTSPlayer if self.args.arenaMCTS else NNPlayer
+    #     nplayer = cls(self.train_net, self.game_cls, sf_args)
+    #     running_score = 0
+    #     running_expectation = 0
+    #     for i in np.random.randint(len(elos), size=5):
+    #         print(f'PITTING AGAINST ITERATION {i}')
+    #         opponent_elo = elos[i]
+    #         self._load_model(self.elo_play_net, i)
+    #         pplayer = cls(self.elo_play_net, self.game_cls, sf_args)
+    #         players = [nplayer] + [pplayer] * (self.game_cls.num_players() - 1)
+    #         self.arena = Arena(players, self.game_cls, use_batched_mcts=False, args=sf_args)
+    #         wins, draws, winrates = self.arena.play_games(10, verbose=False)
+
+    #         expected_score = 1/(1+10**( (opponent_elo-current_elo)/400 ))
+    #         actual_score = (wins[0] + 0.5*draws)#/(wins[0]+wins[1]+draws)
+    #         running_expectation += 10*expected_score
+    #         running_score += actual_score
+    #         #current_elo = current_elo + 32*(actual_score - 10*expected_score)
+
+    #     current_elo = current_elo + 32*(running_score - running_expectation)
+    #     current_elo = max(current_elo, 0)
+    #     elos = np.append(elos, current_elo)
+    #     np.savetxt("elo/"+self.args.run_name+"/ELOS.csv", [elos], delimiter=",")
+    #     print(f'Self play ELO: {current_elo}')
+    #     #self.writer.add_scalar('elo/self_play_elo_3', current_elo, m)
+
+    def randomPreviousGames(self, ITER):
         elos = np.loadtxt('elo/'+self.args.run_name+'/ELOS.csv', delimiter=',')
         elos = [elos]
         elos = np.array(elos).flatten()
-        print(elos)
-        # current_elo = elos[len(elos)-1]
-        current_elo = 0
+        for i in range(1, len(elos)):
+            #print(i, elos[i])
+            self.writer.add_scalar('elo/self_play_elo_3', elos[i], i)
 
-        sf_args = self.args.copy()
-        sf_args.numMCTSSims = 15
-        self._load_model(self.train_net, m)
+    
+    def sweepCPUCT(self, num):
+        params = np.linspace(0.25, 5, num)
+
+        self._load_model(self.elo_play_net, self.model_iter)
         cls = MCTSPlayer if self.args.arenaMCTS else NNPlayer
-        nplayer = cls(self.train_net, self.game_cls, sf_args)
-        running_score = 0
-        running_expectation = 0
-        for i in np.random.randint(len(elos), size=5):
-            print(f'PITTING AGAINST ITERATION {i}')
-            opponent_elo = elos[i]
-            self._load_model(self.elo_play_net, i)
-            pplayer = cls(self.elo_play_net, self.game_cls, sf_args)
+
+        bestIndex = -1
+        highestRate = 0
+        for i in range(num):
+            print(f"Testing CPUCT: {params[i]}")
+            new_args = self.args.copy()
+            new_args.cpuct = params[i]
+            nplayer = cls(self.elo_play_net, self.game_cls, new_args)
+            pplayer = cls(self.elo_play_net, self.game_cls, self.args)
             players = [nplayer] + [pplayer] * (self.game_cls.num_players() - 1)
-            self.arena = Arena(players, self.game_cls, use_batched_mcts=False, args=sf_args)
-            wins, draws, winrates = self.arena.play_games(10, verbose=False)
+            self.arena = Arena(players, self.game_cls, use_batched_mcts=False, args=self.args)
+            wins, draws, wrs = self.arena.play_games(10, verbose=False)
+            if wrs[0] > highestRate and wrs[0] > 0.52:
+                highestRate = wrs[0]
+                bestIndex = i
 
-            expected_score = 1/(1+10**( (opponent_elo-current_elo)/400 ))
-            actual_score = (wins[0] + 0.5*draws)#/(wins[0]+wins[1]+draws)
-            running_expectation += 10*expected_score
-            running_score += actual_score
-            #current_elo = current_elo + 32*(actual_score - 10*expected_score)
+        if bestIndex != -1:
+            print(f"Optimimum CPUCT: {params[bestIndex]}")
+            self.args.cpuct = params[bestIndex]
+        self.writer.add_scalar("hyperparmeters/CPUCT", self.args.cpuct, self.model_iter)
 
-        current_elo = current_elo + 32*(running_score - running_expectation)
-        elos = np.append(elos, current_elo)
-        np.savetxt("elo/"+self.args.run_name+"/ELOS.csv", [elos], delimiter=",")
-        print(f'Self play ELO: {current_elo}')
-        #self.writer.add_scalar('elo/self_play_elo_3', current_elo, m)
 
-    def randomPreviousGames(self, iter):
-        pass
+    #Testing code--- Not working for the moment
+    def tuneHyperparams(self, num):
+        print()
+        print(f"Tuning hyperparmeters with population size of {num}")
+        if not os.path.exists("hyperparams/"+self.args.run_name):
+            os.makedirs("hyperparams/"+self.args.run_name)
+        if self.model_iter == 1:
+            np.savetxt("hyperparams/"+self.args.run_name+"/params.csv", [[self.args.cpuct]], delimiter=",")
+
+        recent = np.loadtxt('hyperparams/'+self.args.run_name+'/params.csv', delimiter=',')
+        recent = [recent]
+        recent = np.array(recent).flatten()
+        print(f"Loading most recent CPUCT: {recent}")
+        new_args = self.args.copy()
+        new_args.cpuct = recent[0]
+        params = [new_args.copy() for i in range(num)]
+        WINRATES = [0] * num
+        RANGE = 0.35
+        #Mutate some params
+        params[0].numMCTSSims = 15
+        for i in range(1, len(params)):
+            # params[i].fpu_reduction = np.clip(params[i].fpu_reduction + params[i].fpu_reduction * np.random.uniform(-RANGE, RANGE), 0, 1)
+            params[i]["cpuct"] = np.clip(params[i].cpuct + np.random.uniform(-RANGE, RANGE), 0.25, 5)
+            # params[i].root_policy_temp = params[i].root_policy_temp + params[i].root_policy_temp * np.random.uniform(-RANGE, RANGE)
+            # params[i].root_noise_frac = params[i].root_noise_frac + params[i].root_noise_frac * np.random.uniform(-RANGE, RANGE)
+            params[i].numMCTSSims = 15
+            #print(params[i].fpu_reduction, params[i].cpuct, params[i].root_policy_temp, params[i].root_noise_frac)
+        #Round robin
+        for i in range(len(params)):
+            print(params[i].cpuct)
+        self._load_model(self.elo_play_net, self.model_iter)
+        cls = MCTSPlayer if self.args.arenaMCTS else NNPlayer
+        
+        for p in range(len(params)):
+            for o in range(len(params)):
+                if p != o:
+                    print(f"Pitting {p} against {o} with CPUCT: {params[p].cpuct} and {params[o].cpuct}. {((p)*num+(o))/(num*num) * 100}% Complete")
+                    nplayer = cls(self.elo_play_net, self.game_cls, params[p])
+                    pplayer = cls(self.elo_play_net, self.game_cls, params[o])
+                    players = [nplayer] + [pplayer] * (self.game_cls.num_players() - 1)
+                    self.arena = Arena(players, self.game_cls, use_batched_mcts=False, args=self.args)
+                    wins, draws, wrs = self.arena.play_games(6, verbose=False)
+                    WINRATES[p] += wrs[0]
+
+        best = np.argmax(WINRATES)
+        recent[0] = params[best].cpuct
+        print("Optimimum Found:")
+        print(f"CPUCT: {params[best].cpuct}")
+        self.args = params[best].copy()
+        np.savetxt("hyperparams/"+self.args.run_name+"/params.csv", [recent], delimiter=",")
+        # self.writer.add_scalar("hyperparmeters/FPU", params[best].fpu_reduction, self.model_iter)
+        self.writer.add_scalar("hyperparmeters/CPUCT", params[best].cpuct, self.model_iter)
+        # self.writer.add_scalar("hyperparmeters/ROOT_POLICY_TEMP", params[best].root_policy_temp, self.model_iter)
+        # self.writer.add_scalar("hyperparmeters/ROOT_NOISE_FRAC", params[best].root_noise_frac, self.model_iter)
+
+
 
     @_set_state(TrainState.COMPARE_PAST)
     def compareToPast(self, model_iter):
@@ -633,14 +753,13 @@ class Coach:
         #     cls = MCTSPlayer if self.args.arenaMCTS else NNPlayer
         #     nplayer = cls(self.game_cls, self.args, self.train_net)
         #     pplayer = cls(self.game_cls, self.args, self.self_play_net)
-        sf_args = self.args.copy()
-        sf_args.numMCTSSims = 15
+        
         cls = MCTSPlayer if self.args.arenaMCTS else NNPlayer
-        nplayer = cls(self.train_net, self.game_cls, sf_args)
-        pplayer = cls(self.self_play_net, self.game_cls, sf_args)
+        nplayer = cls(self.train_net, self.game_cls, self.args)
+        pplayer = cls(self.self_play_net, self.game_cls, self.args)
 
         players = [nplayer] + [pplayer] * (self.game_cls.num_players() - 1)
-        self.arena = Arena(players, self.game_cls, use_batched_mcts=False, args=sf_args)
+        self.arena = Arena(players, self.game_cls, use_batched_mcts=self.args.arenaBatched, args=self.args)
         wins, draws, winrates = self.arena.play_games(self.args.arenaCompare)
         if self.stop_train.is_set(): return
         winrate = winrates[0]
@@ -668,16 +787,14 @@ class Coach:
 
     @_set_state(TrainState.COMPARE_BASELINE)
     def compareToBaseline(self, iteration):
-        sf_args = self.args.copy()
-        sf_args.numMCTSSims = 15
         test_player = self.args.baselineTester(self.game_cls, self.args)
         can_process = test_player.supports_process() and self.args.arenaBatched
-        nnplayer = (MCTSPlayer if self.args.arenaMCTS else NNPlayer)(self.train_net, self.game_cls, sf_args)
+        nnplayer = (MCTSPlayer if self.args.arenaMCTS else NNPlayer)(self.train_net, self.game_cls, self.args)
 
         print('PITTING AGAINST BASELINE: ' + self.args.baselineTester.__name__)
 
         players = [nnplayer] + [test_player] * (self.game_cls.num_players() - 1)
-        self.arena = Arena(players, self.game_cls, use_batched_mcts=False, args=sf_args)
+        self.arena = Arena(players, self.game_cls, use_batched_mcts=self.args.arenaBatched, args=self.args)
         wins, draws, winrates = self.arena.play_games(self.args.arenaCompare)
         if self.stop_train.is_set(): return
         winrate = winrates[0]

@@ -8,51 +8,59 @@ from alphazero.GenericPlayers import RawMCTSPlayer
 from alphazero.utils import dotdict
 #from alphazero.envs.gobang.GobangPlayers import GreedyGobangPlayer
 
+
 args = get_args(dotdict({
-    'run_name': 'gomoku_standard',
+    'run_name': 'gobang',
     'workers': 7,
-    'startIter': 1,
+    'startIter': 0,
     'numIters': 1000,
     'numWarmupIters': 1,
     'process_batch_size': 512,
     'train_batch_size': 512,
     # should preferably be a multiple of process_batch_size and workers
-    'gamesPerIteration': 512 * 5,
+    'gamesPerIteration': 512 * 7,
     'symmetricSamples': True,
     'skipSelfPlayIters': None,
     'selfPlayModelIter': None,
     'numMCTSSims': 500,
-    'numFastSims': 40,
-    'probFastSim': 0.75,
+    'numFastSims': 100,
+    'probFastSim': 0.65,
     'compareWithBaseline': True,
-    'arenaCompareBaseline': 128,
-    'arenaCompare': 128,
-    'arena_batch_size': 128,
+    'arenaCompareBaseline': 10,
+    'arenaCompare': 32,
+    'arena_batch_size': 512,
     'arenaTemp': 1,
     'arenaMCTS': True,
     'baselineCompareFreq': 3,
-    'compareWithPast': True,
-    'pastCompareFreq': 3,
-    'cpuct': 5,
-    'fpu_reduction': -0.01,
+    'compareWithPast': False,
+    'pastCompareFreq': 10,
+    'cpuct': 4,
+    'fpu_reduction': 0.4,
     'load_model': True,
     'root_noise_frac': 0.3,
-    'min_next_model_winrate': 0.56,
+    'min_next_model_winrate': 0.54,
+    'root_policy_temp': 1.5,
+    'train_on_past_data': False,
+    'past_data_chunk_size': 25,
+    'past_data_run_name': 'gobang',
+    'use_draws_for_winrate': False,
+    "_num_players":2
 
 }),
-    model_gating=True,
+    model_gating=False,
     max_gating_iters=100,
-    max_moves=15*15,
+    max_moves=64,
 
-    lr=0.001,
+    lr=0.02,
     num_channels=128,
     depth=10,
-    value_head_channels=128,
-    policy_head_channels=128,
-    value_dense_layers=[2048, 512],
-    policy_dense_layers=[2048]
+    value_head_channels=64,
+    policy_head_channels=64,
+    value_dense_layers=[2048, 1024, 512],
+    policy_dense_layers=[2048, 1024, 512]
     )
-args.scheduler_args.milestones = [75, 150]
+args.scheduler_args.milestones = [150, 225]
+
 
 
 

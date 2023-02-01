@@ -97,6 +97,48 @@ class NNPlayer(BasePlayer):
         return self.nn.process(*args, **kwargs)
 
 
+# class AlphaBetaPlayer(BasePlayer):
+#     def __init__(self, *args, **kwargs):
+#         super().__init__(None, *args, **kwargs)
+#         self.eval_func = self.args.eval_func
+#         self.depth = self.args.depth
+#     def play(self, state) -> int:
+#         vals = []
+#         for i, a in enumerate(state.valid_moves()):
+#             if a == 1:
+#                 s = state.clone()
+                
+#     def alphaBeta(self, state, depth, alpha, beta, maximizingPlayer):
+#         if depth == 0 or np.any(state.win_state()):
+#             return self.eval_func(state)
+
+#         if maximizingPlayer:
+#             maxEval = -np.inf
+#             for i, a in enumerate(state.valid_moves()):
+#                 if a == 1:
+#                     s = state.clone()
+#                     s.play_action(i)
+#                     EVAL = self.alphaBeta(s, depth-1, alpha, beta, False)
+#                     maxEval = max(maxEval, EVAL)
+#                     alpha = max(alpha, EVAl)
+#                     if beta <= alpha:
+#                         break
+#             return maxEval
+#         else:
+#             maxEval = np.inf
+#             for i, a in enumerate(state.valid_moves()):
+#                 if a == 1:
+#                     s = state.clone()
+#                     s.play_action(i)
+#                     EVAL = self.alphaBeta(s, depth-1, alpha, beta, True)
+#                     maxEval = min(maxEval, EVAL)
+#                     beta = min(beta, EVAl)
+#                     if beta <= alpha:
+#                         break
+#             return maxEval
+        
+
+
 class MCTSPlayer(BasePlayer):
     def __init__(self, nn: NNetWrapper, *args, print_policy=False,
                  average_value=False, draw_mcts=False, draw_depth=2, **kwargs):
