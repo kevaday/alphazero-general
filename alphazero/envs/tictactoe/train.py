@@ -6,7 +6,7 @@ from alphazero.envs.tictactoe.tictactoe import Game
 
 
 args = get_args(
-    run_name='tictactoe',
+    run_name='tictactoe_ordo',
     workers=7,
     cpuct=2,
     numMCTSSims=25,

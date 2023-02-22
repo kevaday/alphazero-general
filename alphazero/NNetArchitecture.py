@@ -31,6 +31,8 @@ def mlp(
         layers += [nn.Linear(sizes[i], sizes[i + 1]), act()]
     return nn.Sequential(*layers)
 
+def temp_softmax(INPUT, t=1.0):
+    return torch.exp(F.log_softmax(INPUT / t, dim=1))
 
 # Residual block
 class ResidualBlock(nn.Module):
@@ -72,7 +74,7 @@ class ResNet(nn.Module):
         # game params
         self.channels, self.board_x, self.board_y = game_cls.observation_size()
         self.action_size = game_cls.action_size()
-
+        self.pst = args.pst
         self.conv1 = conv3x3(self.channels, args.num_channels)
         self.bn1 = nn.BatchNorm2d(args.num_channels)
 
@@ -117,6 +119,7 @@ class ResNet(nn.Module):
         pi = torch.flatten(pi, 1)
         pi = self.pi_fc(pi)
 
+        #return F.log_softmax(pi / 1.3, dim=1), F.log_softmax(v, dim=1)
         return F.log_softmax(pi, dim=1), F.log_softmax(v, dim=1)
 
 

@@ -21,6 +21,7 @@ import numpy as np
 import torch
 import pickle
 import os
+import pandas as pd
 
 DEFAULT_ARGS = dotdict({
     'run_name': 'boardgame',
@@ -67,6 +68,7 @@ DEFAULT_ARGS = dotdict({
     'add_root_noise': True,
     'add_root_temp': True,
     'compareWithBaseline': True,
+    'pst': 1,
     'baselineTester': RawMCTSPlayer,
     'arenaCompareBaseline': 128,
     'arenaCompare': 128,
@@ -249,9 +251,6 @@ class Coach:
                     #     self.warmup = True
                     elif self.warmup:
                         self.warmup = False
-
-                    if self.warmup:
-                        print('Warmup: random policy and value')
 
                     self.generateSelfPlayAgents()
                     self.processSelfPlayBatches(self.model_iter)
@@ -538,6 +537,55 @@ class Coach:
 
         self._save_model(self.train_net, iteration)
 
+    # def ordoElo(self):
+    #     if not os.path.exists("elo/"+self.args.run_name):
+    #         os.makedirs("elo/"+self.args.run_name)
+    #     networks = sorted(glob(self.args.checkpoint + '/' + self.args.run_name + '/*'))
+    #     sf_args = self.args.copy()
+    #     sf_args.numMCTSSims = self.args.eloMCTS
+    #     cls = MCTSPlayer if self.args.arenaMCTS else NNPlayer
+    #     nplayer = cls(self.train_net, self.game_cls, sf_args)
+    #     num_games = self.args.eloMatches
+
+    #     file = open("elo/"+self.args.run_name+'/games.txt', 'w+')
+
+    #     opponents = np.random.choice(np.arange(0, self.model_iter), size=num_games)
+    #     if self.args.eloUniform:
+    #         opponents = np.arange(max(0, self.model_iter-num_games), self.model_iter)
+    #     print(f"Pitting against the following iters:{opponents}")
+    #     for i in opponents:
+    #         print(f'PITTING AGAINST ITERATION {i} FOR ELO CALCULATION ')
+    #         self._load_model(self.elo_play_net, i)
+    #         pplayer = cls(self.elo_play_net, self.game_cls, sf_args)
+    #         players = [nplayer] + [pplayer] * (self.game_cls.num_players() - 1)
+    #         self.arena = Arena(players, self.game_cls, use_batched_mcts=False, args=sf_args)
+    #         wins, draws, winrates = self.arena.play_games(self.args.eloGames, verbose=False)
+    #         for j in range(wins[0]):
+    #             file.write(f'[White "Iteration {self.model_iter}"]\n')
+    #             file.write(f'[Black "Iteration {i}"]\n')
+    #             file.write(f'[Result "1-0"]\n')
+    #             file.write(f'1-0\n')
+    #         for j in range(wins[1]):
+    #             file.write(f'[White "Iteration {self.model_iter}"]\n')
+    #             file.write(f'[Black "Iteration {i}"]\n')
+    #             file.write(f'[Result "0-1"]\n')
+    #             file.write(f'0-1\n')
+    #         for j in range(draws):
+    #             file.write(f'[White "Iteration {self.model_iter}"]\n')
+    #             file.write(f'[Black "Iteration {i}"]\n')
+    #             file.write(f'[Result "1/2-1/2"]\n')
+    #             file.write(f'1/2-1/2\n')
+    #     file.close()
+    #     os.popen('"ordo-1.0-win/ordo-win64.exe" -a 100 -A "Iteration 0" -p "'+"elo/"+self.args.run_name+'/games.txt"' + ' -c "'+"elo/"+self.args.run_name+'/results.csv"').read()
+        
+    #     data = pd.read_csv(os.getcwd()+"/elo/"+self.args.run_name+'/results.csv')
+    #     for i in range(self.model_iter):
+            
+    #         if data.PLAYER[i] == "Iteration "+str(self.model_iter):
+    #             print(f"ELO: {data.RATING[i]}")
+    #             self.writer.add_scalar('elo/self_play_elo', float(data.RATING[i]), self.model_iter)
+    #             break
+
     def calculateElo(self):
         if not os.path.exists("elo/"+self.args.run_name):
             os.makedirs("elo/"+self.args.run_name)
@@ -562,21 +610,31 @@ class Coach:
         #Sample from harmonic distribution because integral calculus of 
         #normal distribution is nasty and i dont like the error function
         #Not used, but testing it out. Currently it is just a uniform sampling
-        def harmonic(n):
-            a = 0
-            for i in range(0, n):
-                a += 1/(1+i)
-            return a
+        #I might as well have used softmax
+        #Not sure if this will work though
+        # def normal_dist(x, a):
+        #     return np.exp(-(1/(2*a)) * (x**2)) / (a * np.sqrt(2 * np.pi))
 
         num_games = self.args.eloMatches
-        harmonic_coef = 1/harmonic(len(elos))
-        probs = harmonic_coef / (1+np.arange(0, len(elos)))
+        # probs = []
+        # def softmax(x):
+        #     """Compute softmax values for each sets of scores in x."""
+        #     e_x = np.exp(x - np.max(x))
+        #     return e_x / e_x.sum()
 
-        #opponents = np.random.choice(np.flip(np.arange(0, len(elos))), p=probs, size=num_games)
+        # for i in range(len(elos)):
+        #     probs.append(normal_dist(i, len(elos)))
+
+        # print(probs)
+        # probs = softmax(probs)
+        # print(probs)
+        # opponents = np.random.choice(np.flip(np.arange(0, len(elos))), p=probs, size=num_games)
         
         opponents = np.random.choice(np.arange(0, len(elos)), size=num_games)
+
         if self.args.eloUniform:
             opponents = np.arange(max(0, len(elos)-num_games), len(elos))
+
         print(f"Pitting against the following iters:{opponents}")
         for i in opponents:
             print(f'PITTING AGAINST ITERATION {i} FOR ELO CALCULATION ')

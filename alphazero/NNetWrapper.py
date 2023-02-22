@@ -220,6 +220,7 @@ class NNetWrapper(BaseWrapper):
             pi, v = self.nnet(board)
 
             # print('PREDICTION TIME TAKEN : {0:03f}'.format(time.time()-start))
+            #return pi.data.cpu().numpy()[0], v.data.cpu().numpy()[0]
             return torch.exp(pi).data.cpu().numpy()[0], torch.exp(v).data.cpu().numpy()[0]
 
     def process(self, batch: torch.Tensor):
