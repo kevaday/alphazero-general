@@ -144,7 +144,7 @@ class Arena:
             state: the last state in the game
             result: the value of the game result (based on last state)
         """
-        if verbose: assert self.display
+        #if verbose: assert self.display
 
         self.stop_event = mp.Event()
         self.pause_event = mp.Event()
@@ -159,7 +159,7 @@ class Arena:
                 time.sleep(.1)
 
             action = self.players[player_to_index[self.game_state.player]](self.game_state)
-            if self.stop_event.is_set() or not isinstance(action, int):
+            if self.stop_event.is_set(): #or not isinstance(action, int):
                 break
 
             # valids = state.valid_moves()
@@ -171,15 +171,15 @@ class Arena:
             [p.update(self.game_state, action) for p in self.players]
             self.game_state.play_action(action)
 
-            if verbose:
-                self.display(self.game_state, action)
+            # if verbose:
+            #     self.display(self.game_state, action)
             
             winstate = self.game_state.win_state()
 
             if winstate.any():
                 if verbose:
                     print(f'Game over: Turn {self.game_state.turns}, Result {winstate}')
-                    self.display(self.game_state)
+                    #self.display(self.game_state)
 
                 return self.game_state, winstate
 

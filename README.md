@@ -18,6 +18,7 @@ You may join the [Discord server](https://discord.gg/MVaHwGZpRC) if you wish to 
 7. **Warmup Iterations:** A few self play iterations in the beginning of training can optionnally be done using random policy and value to speed up initial generation of training data instead of using a model that is initally random anyways. This makes these iterations purely CPU-bound.
 8. **Root Dirichlet Noise & Root Temperature, Discount:** Allows for better exploration and MCTS doesn't get stuck in local minima as often. Discount allows AlphaZero to "understand" the concept of time and chooses actions which lead to a win more quickly/efficiently as opposed to choosing a win that would occur later on in the game.
 9. **More Adjustable Parameters:** This implementation allows for the modification of numerous hyperparameters, allowing for substantial control over the training process. More on hyperparameters below where the usage of some are discussed.
+10. **Self-Play Elo Calculation:** This implementation will calculate self play elo at the end of each iteration providing better insight to the strength of the agent, contributed by [Bobingstern](https://github.com/Bobingstern/alphazero-general).
 
 ## Getting Started
 ### Install required packages
@@ -96,6 +97,12 @@ As a general guideline, game engine files/other potential bottlenecks should be 
 
 **`fpu_reduction`:** "First Play Urgency" reduction decreases the initialization Q value of an unvisited node by this factor, must be in the range `[-1, 1]`. The closer this value is to 1, it discourages MCTS to explore unvisited nodes further, which (hopefully) allows it to explore paths that are more familiar. If this is set to 0, no reduction is done and unvisited nodes inherit their parent's Q value. Closer to a value of -1 (not recommended to go below 0), unvisited nodes become more prefered which can lead to more exploration.
 
+**`eloMCTS`:** Number of MCTS simulations to use for elo calculation games. Recommended to be less than that of `numMCTSSims` since elo calculation can be very expensive
+
+**`eloGames`:** Number of games to play against each previous iteration for elo calculation. Recommended to be around 10-20 but the more the better although it will take longer.
+
+**`eloMatches`:** Number of previous iterations to play against. Sampled uniformly from the number of completed iterations. Default is 10.
+
 **`num_channels`:** The number of channels each ResNet convolution block has.
 
 **`depth`:** The number of stacked ResNet blocks to use in the network.
@@ -119,14 +126,12 @@ Towards the end of training, the winrate against the past model suddenly decreas
 
 The model file for the most successful iteration (193) can be downloaded [here](https://drive.google.com/file/d/111afRD0j9CD86nFyKueAAGdXNAmAxxDn/view?usp=sharing). As mentioned above, subsequent iterations underperformed most likely due to overfitting.
 
-Another instance was trained later using the current default arguments. It was trained using more recent features such as FPU value, root temperature/dirichlet noise, etc. Only 35 iterations were trained, as it was intended just to test these new features.
+Another instance was trained later using the current default arguments. It was trained using more recent features such as FPU value, root temperature/dirichlet noise, etc and was meant to test ELO calculation. 
 
-I was surprised to see that even in only 35 iterations (which took approximately 8 hours on a GTX 1070 and i5-4690 CPU) it had reached superhuman capabilities. Take a look at the Tensorboard logs:
-![image](https://user-images.githubusercontent.com/28303167/164116278-8eabfa9f-cd33-4f19-bf09-16906bfef0e6.png)
-![image](https://user-images.githubusercontent.com/28303167/164116313-5afe1e73-b087-4827-a407-553b652b66de.png)
-For unknown reasons, it does not perform as well against the baseline tester as the instance above, but this is probably due to the use of dirichlet noise and root temperature in Arena, which can cause AlphaZero to make a 'mistake' by random chance (which is intended for further exploration in self-play). However, if these are turned off, temperature is set to a low value (0-0.25), and more 'thinking' time is allowed (number of MCTS simulations are increased), then even this undertrained model can essentially play a perfect game.
+After about 60 iteration and around 24 hours of training, the agent has mastered the game. This can be shown by the fact that when the agent plays first, it wins the majority of the time. Since connect4 is solved, it has been proven that the player that plays first can always guarantee a victory. It can also beat a perfect solver if it goes first. The self-play elo curve also shows a solid increase in strength, peaking at around 3000 ELO. Here are the tensorboard logs:
+![image](https://raw.githubusercontent.com/Bobingstern/alphazero-general/main/img/image.png)
 
-The model for the lateset iteration (35) of this instance can be downloaded [here](https://drive.google.com/file/d/1goGnOWeQY2LmWounB-FPPoSH7ZdCg59X/view?usp=sharing).
+You can play against the Tensorflow.js deployment of it [here](https://github.com/Bobingstern/AlphaZero-Connect-4).
 
 ### Viking Chess - Brandubh
 `envs/brandubh`
