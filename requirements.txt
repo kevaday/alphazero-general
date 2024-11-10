@@ -1,7 +1,7 @@
-torch
-numpy
-cython
-tensorboard
-tensorboardX
-choix
-PySide2
+torch<2.5
+numpy<1.25
+Cython<3.1
+tensorboard<2.15
+tensorboardX<2.7
+choix<0.4
+PySide2<5.16
