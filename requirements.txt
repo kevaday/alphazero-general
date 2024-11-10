@@ -5,3 +5,4 @@ tensorboard<2.15
 tensorboardX<2.7
 choix<0.4
 PySide2<5.16
+six<1.17
