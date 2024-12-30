@@ -78,6 +78,7 @@ cdef class Board:
             for x in range(self.n):
                 if self.pieces[x,y] == color:
                     moves.update(self.get_moves_for_square((x,y)))
+        
         return moves
 
     cpdef bint has_legal_moves(self, int color):

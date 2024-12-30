@@ -6,19 +6,19 @@ from alphazero.envs.tictactoe.tictactoe import Game
 
 
 args = get_args(
-    run_name='tictactoe',
-    workers=2,
+    run_name='tictactoe_ordo',
+    workers=7,
     cpuct=2,
-    numMCTSSims=100,
+    numMCTSSims=25,
     probFastSim=0.5,
     numWarmupIters=1,
-    baselineCompareFreq=1,
-    pastCompareFreq=1,
-    arenaBatchSize=2048,
-    arenaCompare=2*2048,
-    arenaCompareBaseline=2*2048,
+    baselineCompareFreq=5,
+    pastCompareFreq=5,
+    arenaBatchSize=512,
+    arenaCompare=128,
+    arenaCompareBaseline=128,
     process_batch_size=512,
-    train_batch_size=2048,
+    train_batch_size=512,
     gamesPerIteration=2*512,
     lr=0.01,
     num_channels=32,
@@ -27,7 +27,13 @@ args = get_args(
     policy_head_channels=4,
     value_dense_layers=[128, 64],
     policy_dense_layers=[128],
-    skipSelfPlayIters=1,
+    compareWithBaseline=False,
+    compareWithPast=False,
+
+    eloMCTS=25,
+    eloGames=10,
+    eloMatches=10,
+    #arenaBatched=False
 )
 
 

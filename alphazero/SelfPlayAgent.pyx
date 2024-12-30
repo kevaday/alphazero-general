@@ -41,6 +41,7 @@ class SelfPlayAgent(mp.Process):
 
         self._is_arena = _is_arena
         self._is_warmup = _is_warmup
+
         if _is_arena:
             self.player_to_index = list(range(game_cls.num_players()))
             np.random.shuffle(self.player_to_index)
@@ -50,7 +51,6 @@ class SelfPlayAgent(mp.Process):
             self._WARMUP_POLICY = torch.full((action_size,), 1 / action_size).to(policy_tensor.device)
             value_size = game_cls.num_players() + 1
             self._WARMUP_VALUE = torch.full((value_size,), 1 / value_size).to(policy_tensor.device)
-
         self.fast = False
         for _ in range(self.batch_size):
             self.games.append(self.game_cls())
@@ -112,8 +112,8 @@ class SelfPlayAgent(mp.Process):
                 self.policy_tensor[i].copy_(self._WARMUP_POLICY)
                 self.value_tensor[i].copy_(self._WARMUP_VALUE)
                 continue
-
             data = torch.from_numpy(state.observation())
+
             if self._is_arena:
                 data = data.view(-1, *state.observation_size())
                 player = self.player_to_index[self.games[i].player]

@@ -10,7 +10,7 @@ NUM_PLAYERS = 2
 NUM_CHANNELS = 1
 BOARD_SIZE = 8
 MAX_TURNS = BOARD_SIZE * BOARD_SIZE
-ACTION_SIZE = BOARD_SIZE ** 2
+ACTION_SIZE = BOARD_SIZE ** 2 + 1
 OBSERVATION_SIZE = (NUM_CHANNELS, BOARD_SIZE, BOARD_SIZE)
 
 
@@ -70,14 +70,24 @@ class Game(GameState):
         valids = [0] * self.action_size()
 
         for x, y in self._board.get_legal_moves(self._player_range()):
-            valids[self._board.n * x + y] = 1
+             if self._board.pieces[x,y] == 0:
+                valids[self._board.n * x + y] = 1
 
+        for i in range(len(valids)):
+            if valids[i] == 1:
+                if self._board.pieces[valids[i] // self._board.n, valids[i] % self._board.n] != 0:
+                    valids[i] = 0
+                    print("Fixed")
+
+        if np.sum(valids) == 0:
+            valids[-1] = 1
         return np.array(valids, dtype=np.intc)
 
     def play_action(self, action: int) -> None:
         super().play_action(action)
         move = (action // self._board.n, action % self._board.n)
-        self._board.execute_move(move, self._player_range())
+        if action != self._board.n * self._board.n:
+            self._board.execute_move(move, self._player_range())
         self._update_turn()
 
     def win_state(self) -> np.ndarray:
