@@ -13,7 +13,7 @@ from alphazero.MCTS import MCTS
 class SelfPlayAgent(mp.Process):
     def __init__(self, id, game_cls, ready_queue, batch_ready, batch_tensor, policy_tensor,
                  value_tensor, output_queue, result_queue, complete_count, games_played,
-                 stop_event: mp.Event, pause_event: mp.Event(), args, _is_arena=False, _is_warmup=False):
+                 stop_event: mp.Event, pause_event: mp.Event, args, _is_arena=False, _is_warmup=False):
         super().__init__()
         self.id = id
         self.game_cls = game_cls
@@ -55,7 +55,7 @@ class SelfPlayAgent(mp.Process):
         for _ in range(self.batch_size):
             self.games.append(self.game_cls())
             self.histories.append([])
-            self.temps.append(self.args.startTemp)
+            self.temps.append(self.args.startTemp if not self._is_arena else self.args.arenaTemp)
             self.next_reset.append(0)
             self.mcts.append(self._get_mcts())
 
@@ -74,7 +74,7 @@ class SelfPlayAgent(mp.Process):
 
     def _check_pause(self):
         while self.pause_event.is_set():
-            time.sleep(.1)
+            time.sleep(1)
 
     def run(self):
         try:
@@ -83,7 +83,8 @@ class SelfPlayAgent(mp.Process):
                 self._check_pause()
                 self.fast = np.random.random_sample() < self.args.probFastSim
                 sims = self.args.numFastSims if self.fast else self.args.numMCTSSims \
-                    if not self._is_warmup else self.args.numWarmupSims
+                    if not self._is_warmup else self.args.numWarmupSims \
+                        if not self._is_arena else self.args.numArenaSims
                 for _ in range(sims):
                     if self.stop_event.is_set(): break
                     self.generateBatch()
@@ -97,6 +98,8 @@ class SelfPlayAgent(mp.Process):
             if not self._is_arena:
                 self.output_queue.close()
                 self.output_queue.join_thread()
+                self.result_queue.close()
+                self.result_queue.join_thread()
         except Exception:
             print(traceback.format_exc())
 
@@ -153,18 +156,23 @@ class SelfPlayAgent(mp.Process):
     def playMoves(self):
         for i in range(self.batch_size):
             self._check_pause()
-            self.temps[i] = self.args.temp_scaling_fn(
+            self.temps[i] = (self.args.temp_scaling_fn if not self._is_arena
+                             else self.args.arena_temp_scaling_fn)(
                 self.temps[i], self.games[i].turns, self.game_cls.max_turns()
-            ) if not self._is_arena else self.args.arenaTemp
+            )
+
             policy = self._mcts(i).probs(self.games[i], self.temps[i])
             action = np.random.choice(self.games[i].action_size(), p=policy)
+
             if not self.fast and not self._is_arena:
+                # TODO: for fast sims store only value data to train on
                 self.histories[i].append((
                     self.games[i].clone(),
                     self._mcts(i).probs(self.games[i])
                 ))
 
             if self._is_arena:
+                # Update root for all players in current game i
                 [mcts.update_root(self.games[i], action) for mcts in self.mcts[i]]
             else:
                 self._mcts(i).update_root(self.games[i], action)
@@ -176,11 +184,13 @@ class SelfPlayAgent(mp.Process):
             winstate = self.games[i].win_state()
             if winstate.any():
                 self.result_queue.put((self.games[i].clone(), winstate, self.id))
+
                 lock = self.games_played.get_lock()
                 lock.acquire()
                 if self.games_played.value < self.args.gamesPerIteration:
                     self.games_played.value += 1
                     lock.release()
+
                     if not self._is_arena:
                         for hist in self.histories[i]:
                             self._check_pause()
@@ -194,9 +204,10 @@ class SelfPlayAgent(mp.Process):
                                 self.output_queue.put((
                                     state.observation(), pi, np.array(winstate, dtype=np.float32)
                                 ))
+
                     self.games[i] = self.game_cls()
                     self.histories[i] = []
-                    self.temps[i] = self.args.startTemp
+                    self.temps[i] = self.args.startTemp if not self._is_arena else self.args.arenaTemp
                     self.mcts[i] = self._get_mcts()
                 else:
                     lock.release()

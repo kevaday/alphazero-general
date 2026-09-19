@@ -18,7 +18,9 @@ args = get_args(
     numMCTSSims=250,
     numFastSims=50,
     numWarmupSims=5,
-    probFastSim=0.8,
+    probFastSim=0,
+    min_discount=1,
+    fpu_reduction=0,
 
     selfPlayModelIter=None,
     skipSelfPlayIters=None,

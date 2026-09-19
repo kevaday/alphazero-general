@@ -154,6 +154,14 @@ cdef class Game:  #(GameState):
         return g
 
     @staticmethod
+    def max_turns():
+        return DRAW_MOVE_COUNT
+
+    @staticmethod
+    def has_draw():
+        return True
+
+    @staticmethod
     def num_players():
         return NUM_PLAYERS
 

@@ -3,7 +3,7 @@ from numpy import get_include
 pyxinstall(setup_args={'include_dirs': get_include()})
 
 from alphazero.SelfPlayAgent import SelfPlayAgent
-from alphazero.utils import get_iter_file, dotdict, get_game_results, default_temp_scaling
+from alphazero.utils import get_iter_file, dotdict, get_game_results, default_temp_scaling, const_temp_scaling
 from alphazero.Arena import Arena
 from alphazero.GenericPlayers import RawMCTSPlayer, NNPlayer, MCTSPlayer
 from alphazero.pytorch_classification.utils import Bar, AverageMeter
@@ -58,10 +58,11 @@ DEFAULT_ARGS = dotdict({
     'numMCTSSims': 100,
     'numFastSims': 20,
     'numWarmupSims': 5,
-    'probFastSim': 0.75,
+    'numArenaSims': 100,
+    'probFastSim': 0,
     'mctsResetThreshold': None,
     'startTemp': 1,
-    'temp_scaling_fn': default_temp_scaling,
+    'temp_scaling_fn': const_temp_scaling,
     'root_policy_temp': 1.1,
     'root_noise_frac': 0.1,
     'add_root_noise': True,
@@ -70,7 +71,8 @@ DEFAULT_ARGS = dotdict({
     'baselineTester': RawMCTSPlayer,
     'arenaCompareBaseline': 128,
     'arenaCompare': 128,
-    'arenaTemp': 0.25,
+    'arenaTemp': 0,
+    'arena_temp_scaling_fn': const_temp_scaling,
     'arenaMCTS': True,
     'arenaBatched': True,
     'baselineCompareFreq': 1,
@@ -118,7 +120,7 @@ DEFAULT_ARGS = dotdict({
 
 
 def get_args(args=None, **kwargs):
-    new_args = DEFAULT_ARGS
+    new_args = DEFAULT_ARGS.copy()
     if args:
         new_args.update(args)
     for key, value in kwargs.items():
@@ -228,7 +230,7 @@ class Coach:
         try:
 
             while self.model_iter <= self.args.numIters:
-                print(f'------ITER {self.model_iter}------')
+                print(f'------ ITER {self.model_iter} ------')
 
                 if (
                     (not self.args.skipSelfPlayIters
@@ -303,7 +305,7 @@ class Coach:
             self.policy_tensors[i].share_memory_()
 
             self.value_tensors.append(torch.zeros(
-                [self.args.process_batch_size, self.game_cls.num_players() + 1]
+                [self.args.process_batch_size, self.game_cls.num_players() + self.game_cls.has_draw()]
             ))
             self.value_tensors[i].share_memory_()
             self.batch_ready.append(mp.Event())
@@ -348,6 +350,7 @@ class Coach:
                 sample_time.update((time() - end) / (size - n), size - n)
                 n = size
                 end = time()
+
             bar.suffix = f'({size}/{self.args.gamesPerIteration}) Sample Time: {sample_time.avg:.3f}s | Total: {bar.elapsed_td} | ETA: {bar.eta_td:}'
             bar.goto(size)
             self.sample_time = sample_time.avg
@@ -367,8 +370,9 @@ class Coach:
 
         data_tensor = torch.zeros([num_samples, *self.game_cls.observation_size()])
         policy_tensor = torch.zeros([num_samples, self.game_cls.action_size()])
-        value_tensor = torch.zeros([num_samples, self.game_cls.num_players() + 1])
+        value_tensor = torch.zeros([num_samples, self.game_cls.num_players() + self.game_cls.has_draw()])
         for i in range(num_samples):
+            # TODO: for fast sims store only value data to train on
             data, policy, value = self.file_queue.get()
             data_tensor[i] = torch.from_numpy(data)
             policy_tensor[i] = torch.from_numpy(policy)
@@ -445,9 +449,9 @@ class Coach:
             )
             
             try:
-                data_tensor = torch.load(filename + '-data.pkl')
-                policy_tensor = torch.load(filename + '-policy.pkl')
-                value_tensor = torch.load(filename + '-value.pkl')
+                data_tensor = torch.load(filename + '-data.pkl', weights_only=False)
+                policy_tensor = torch.load(filename + '-policy.pkl', weights_only=False)
+                value_tensor = torch.load(filename + '-value.pkl', weights_only=False)
             except FileNotFoundError as e:
                 print('Warning: could not find tensor data. ' + str(e))
                 return

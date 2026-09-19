@@ -4,13 +4,13 @@ pyximport.install(setup_args={'include_dirs': numpy.get_include()})
 
 from alphazero.Coach import Coach, get_args
 from alphazero.NNetWrapper import NNetWrapper as nn
-from alphazero.envs.hnefatafl.fastafl import Game as Game
+from alphazero.envs.brandubh.fastafl import Game
 from alphazero.GenericPlayers import RawMCTSPlayer
 from alphazero.utils import dotdict
 
 args = get_args(
     run_name='brandubh_fastafl',
-    #workers=1,
+    workers=4,
     max_moves=100,
     num_stacked_observations=1,
     cpuct=1.25,
@@ -18,7 +18,9 @@ args = get_args(
     numMCTSSims=250,
     numFastSims=50,
     numWarmupSims=5,
-    probFastSim=0.8,
+    probFastSim=0,
+    min_discount=1,
+    fpu_reduction=0,
 
     selfPlayModelIter=None,
     skipSelfPlayIters=None,

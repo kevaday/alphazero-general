@@ -76,12 +76,12 @@ class ResNet(nn.Module):
         self.conv1 = conv3x3(self.channels, args.num_channels)
         self.bn1 = nn.BatchNorm2d(args.num_channels)
 
-        self.res_layers = []
-        for _ in range(args.depth):
-            self.res_layers.append(
+        self.resnet = nn.Sequential(
+            *[
                 ResidualBlock(args.num_channels, args.num_channels)
-            )
-        self.resnet = nn.Sequential(*self.res_layers)
+                for _ in range(args.depth)
+            ]
+        )
 
         self.v_conv = conv1x1(args.num_channels, args.value_head_channels)
         self.v_bn = nn.BatchNorm2d(args.value_head_channels)
@@ -89,7 +89,7 @@ class ResNet(nn.Module):
             self.board_x*self.board_y*args.value_head_channels,
             args.value_dense_layers,
             game_cls.num_players() + game_cls.has_draw(),
-            activation=nn.Identity
+            activation=nn.ReLU
         )
 
         self.pi_conv = conv1x1(args.num_channels, args.policy_head_channels)
@@ -98,7 +98,7 @@ class ResNet(nn.Module):
             self.board_x*self.board_y*args.policy_head_channels,
             args.policy_dense_layers,
             self.action_size,
-            activation=nn.Identity
+            activation=nn.ReLU
         )
 
     def forward(self, s):
@@ -129,7 +129,7 @@ class FullyConnected(nn.Module):
     def __init__(self, game_cls: GameState, args: dotdict):
         super(FullyConnected, self).__init__()
         # get input size
-        self.input_size = sum(game_cls.observation_size())
+        self.input_size = int(torch.tensor(game_cls.observation_size()).prod().item())
 
         self.input_fc = mlp(
             self.input_size,
@@ -141,13 +141,13 @@ class FullyConnected(nn.Module):
             args.input_fc_layers[-1],
             args.value_dense_layers,
             game_cls.num_players() + game_cls.has_draw(),
-            activation=nn.Identity
+            activation=nn.ReLU
         )
         self.pi_fc = mlp(
             args.input_fc_layers[-1],
             args.policy_dense_layers,
-            self.game_cls.action_size(),
-            activation=nn.Identity
+            game_cls.action_size(),
+            activation=nn.ReLU
         )
 
     def forward(self, s):

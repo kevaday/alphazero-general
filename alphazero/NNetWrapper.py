@@ -256,7 +256,7 @@ class NNetWrapper(BaseWrapper):
         if not os.path.exists(filepath):
             raise FileNotFoundError("No model in path {}".format(filepath))
 
-        checkpoint = torch.load(filepath)
+        checkpoint = torch.load(filepath, weights_only=False)
         args_saved = 'args' in checkpoint
         if use_saved_args and args_saved:
             self.args = checkpoint['args']

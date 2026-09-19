@@ -1,7 +1,7 @@
-torch
-numpy
-cython
-tensorboard
-tensorboardX
-choix
-PySide2
+torch==2.14.0+cu126
+numpy==1.26.4
+cython==3.3.0
+tensorboard==2.21.0
+tensorboardX==2.6.5
+choix==0.4.1
+PySide6==6.11.2

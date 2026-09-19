@@ -32,8 +32,6 @@ def const_temp_scaling(temp, *args, **kwargs) -> float:
 
 
 def get_game_results(result_queue, game_cls, _get_index=None):
-    player_to_index = {p: i for i, p in enumerate(range(game_cls.num_players()))}
-
     num_games = result_queue.qsize()
     wins = [0] * game_cls.num_players()
     draws = 0
@@ -48,7 +46,7 @@ def get_game_results(result_queue, game_cls, _get_index=None):
                 if player == len(wins):
                     draws += 1
                 else:
-                    index = _get_index(player, agent_id) if _get_index else player_to_index[player]
+                    index = _get_index(player, agent_id) if _get_index else player
                     wins[index] += 1
 
     return wins, draws, game_len_sum / num_games if num_games else 0

@@ -2,6 +2,7 @@ import pyximport; pyximport.install()
 
 from AlphaZeroGUI.CustomGUI import CustomGUI, GameWindow, GameBoardWidget, NUM_BEST_ACTIONS
 from alphazero.NNetWrapper import NNetWrapper
+from alphazero.Evaluator import MCTSEvaluator
 from alphazero.envs.brandubh.fastafl import Game, Square, get_action, get_move
 from PySide2 import QtCore, QtGui, QtWidgets
 from typing import List
@@ -256,6 +257,7 @@ if __name__ == '__main__':
     eval_model = NNetWrapper.from_checkpoint(
         Game, '', r'D:\Projects\Python\alphazero-general\checkpoint\brandubh\brandubh_fastafl_iteration-0048.pkl'
     )
-    gui = GUI(title='Hnefatafl', eval_model=eval_model)
+    evaluator = MCTSEvaluator()
+    gui = GUI(title='Hnefatafl', evaluator=evaluator)
     gui.show()
     app.exec_()
