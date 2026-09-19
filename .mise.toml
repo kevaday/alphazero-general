@@ -1,0 +1,4 @@
+[tools]
+python = "3.8"
+ninja = "1.12"
+clang = "19.1"
