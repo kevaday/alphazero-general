@@ -1,7 +1,7 @@
 from alphazero.Evaluator import BaseEvaluator, MCTSEvaluator
 from alphazero.Game import GameState
 from alphazero.utils import map_value
-from PySide2 import QtCore, QtGui, QtWidgets
+from PySide6 import QtCore, QtGui, QtWidgets
 from typing import Callable, Optional, Union, List
 from abc import ABC, abstractmethod
 from pathlib import Path
@@ -579,4 +579,4 @@ if __name__ == '__main__':
     window = GameWindow(board_width=7, board_height=6, cell_size=100, grid_line_width=2, title='Connect 4')
     window.game_board.tileClicked.connect(lambda x, y: print(f'Clicked {x}, {y}'))
     window.show()
-    app.exec_()
+    app.exec()

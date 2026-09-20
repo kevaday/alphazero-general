@@ -2,7 +2,7 @@ import pyximport; pyximport.install()
 
 from AlphaZeroGUI.CustomGUI import CustomGUI, GameWindow, NUM_BEST_ACTIONS
 from alphazero.envs.connect4.connect4 import Game
-from PySide2.QtCore import Qt
+from PySide6.QtCore import Qt
 
 
 class GUI(CustomGUI):
@@ -93,11 +93,10 @@ class GUI(CustomGUI):
 
 
 if __name__ == '__main__':
-    from PySide2.QtWidgets import QApplication
+    from PySide6.QtWidgets import QApplication
     import sys
 
     app = QApplication(sys.argv)
     gui = GUI(title='Connect 4')
     gui.show()
-    sys.exit(app.exec_())
-
+    sys.exit(app.exec())

@@ -274,7 +274,8 @@ class BaseEvaluator(ABC):
 
         self.__current_state = state.clone()
         self._stop_event.clear()
-        if not self._updated and self.last_state is not None and state.last_action is not None:
+        if not self._updated and self.last_state is not None \
+            and state.last_action is not None and state.last_action != -1:
             self.update(self.last_state, state.last_action)
 
         self._run_thread = threading.Thread(target=self._run, args=(state,), daemon=True)

@@ -241,6 +241,7 @@ cdef class MCTS:
                 valids[c.a] = 1
 
             # mask invalid moves and rescale
+            # TODO: handle no valid moves
             pi *= np.array(valids, dtype=np.float32)
             pi /= np.sum(pi)
 

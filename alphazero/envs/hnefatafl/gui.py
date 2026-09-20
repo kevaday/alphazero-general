@@ -3,7 +3,7 @@ import pyximport; pyximport.install()
 from AlphaZeroGUI.CustomGUI import CustomGUI, GameWindow, GameBoardWidget, NUM_BEST_ACTIONS
 from alphazero.NNetWrapper import NNetWrapper
 from alphazero.envs.hnefatafl.hnefatafl import Game, Square, get_action, get_move
-from PySide2 import QtCore, QtGui, QtWidgets
+from PySide6 import QtCore, QtGui, QtWidgets
 from typing import List
 
 import numpy as np
@@ -233,8 +233,8 @@ class GUI(CustomGUI):
             self.board.remove_highlights()
             from_square, to_square = get_move(state._board, state.last_action)
             self.board.clear_fills()
-            self.board.fill_tile(*from_square, QtGui.Qt.darkGreen)
-            self.board.fill_tile(*to_square, QtGui.Qt.darkGreen)
+            self.board.fill_tile(*from_square, QtCore.Qt.darkGreen)
+            self.board.fill_tile(*to_square, QtCore.Qt.darkGreen)
             self.board.clear_selection()
 
         if state.win_state().any():
@@ -255,4 +255,4 @@ if __name__ == '__main__':
     )
     gui = GUI(title='Hnefatafl', eval_model=eval_model)
     gui.show()
-    app.exec_()
+    app.exec()

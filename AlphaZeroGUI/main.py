@@ -1,6 +1,6 @@
-from PySide2.QtWidgets import QApplication, QMessageBox, QInputDialog, QTableWidgetItem, QLineEdit
-from PySide2.QtGui import QFont
-from PySide2.QtCore import Qt, QTimer
+from PySide6.QtWidgets import QApplication, QMessageBox, QInputDialog, QTableWidgetItem, QLineEdit
+from PySide6.QtGui import QFont
+from PySide6.QtCore import Qt, QTimer
 from AlphaZeroGUI import ARGS_DIR, ENVS_DIR, PLAYERS_MODULE, GENERIC_PLAYERS_MODULE, ALPHAZERO_ROOT
 from AlphaZeroGUI._gui import Ui_FormMainMenu, Ui_DialogEditArgs, Ui_DialogCombo
 from AlphaZeroGUI.CustomGUI import CustomGUI, MCTSEvaluator
@@ -332,7 +332,7 @@ class MainWindow(Ui_FormMainMenu):
                     f'Num. Turns: {self.arena.game_state.turns}/{self.arena.game_state.max_turns()}'
                 )
 
-            winrates = [round(p.winrate, 3) for p in self.arena.players]
+            winrates = self.arena.winrates()
             if any(winrates):
                 self.lblPitWinrates.setText(f'Win Rates: {winrates}')
             self.lblPitEpsTime.setText(f'Episode Time: {round(self.arena.eps_time, 3)}')
@@ -848,7 +848,7 @@ class MainWindow(Ui_FormMainMenu):
             model_dialog.btnBox.accepted.connect(accepted)
             model_dialog.btnBox.rejected.connect(_cancel)
             dialog.hide()
-            if model_dialog.exec_() != 0: _cancel()
+            if model_dialog.exec() != 0: _cancel()
 
         def _accept():
             chosen_players.append(players[dialog.comboBox.currentText()])
@@ -878,7 +878,7 @@ class MainWindow(Ui_FormMainMenu):
             dialog.setWindowTitle('Edit Players')
             dialog.btnBox.accepted.connect(_accept)
             dialog.btnBox.rejected.connect(_cancel)
-            if dialog.exec_() != 0: return
+            if dialog.exec() != 0: return
         if user_cancelled: return
 
         _show_model_dialog(
@@ -1026,7 +1026,7 @@ def run():
     app = QApplication(sys.argv)
     window = MainWindow()
     window.show()
-    sys.exit(app.exec_())
+    sys.exit(app.exec())
 
 
 if __name__ == "__main__": run()
