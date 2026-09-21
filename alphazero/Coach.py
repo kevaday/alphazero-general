@@ -3,11 +3,12 @@ from numpy import get_include
 pyxinstall(setup_args={'include_dirs': get_include()})
 
 from alphazero.SelfPlayAgent import SelfPlayAgent
-from alphazero.utils import get_iter_file, dotdict, get_game_results, default_temp_scaling, const_temp_scaling
+from alphazero.utils import (
+    QUEUE_SENTINEL, get_iter_file, dotdict, get_game_results, default_temp_scaling,
+    const_temp_scaling, AverageMeter
+)
 from alphazero.Arena import Arena
 from alphazero.GenericPlayers import RawMCTSPlayer, NNPlayer, MCTSPlayer
-from alphazero.pytorch_classification.utils import Bar, AverageMeter
-
 from torch import multiprocessing as mp
 from torch.utils.data import TensorDataset, ConcatDataset, DataLoader
 from tensorboardX import SummaryWriter
@@ -19,6 +20,8 @@ from enum import Enum
 
 import numpy as np
 import torch
+from datetime import timedelta
+from tqdm import tqdm
 import pickle
 import os
 
@@ -44,13 +47,12 @@ DEFAULT_ARGS = dotdict({
     'past_data_run_name': 'boardgame',
     # should preferably be a multiple of process_batch_size and workers
     'gamesPerIteration': 256 * mp.cpu_count(),
-    'minTrainHistoryWindow': 4,
-    'maxTrainHistoryWindow': 20,
+    'minTrainHistoryWindow': 2,
+    'maxTrainHistoryWindow': 10,
     'trainHistoryIncrementIters': 2,
-    '_num_players': None,  # Doesn't have to be changed, set automatically by the env.
     'min_discount': 1,
-    'fpu_reduction': 0.2,
-    'num_stacked_observations': 8,  # TODO: built-in stacked observations (arg does nothing right now)
+    'fpu_reduction': 0,
+    'num_stacked_observations': 2,  # Useful for repetition-based draw detection
     'numWarmupIters': 1,  # Iterations where games are played randomly, 0 for none
     'skipSelfPlayIters': None,
     'selfPlayModelIter': None,
@@ -160,8 +162,6 @@ class Coach:
         self.train_net = nnet
         self.self_play_net = nnet.__class__(game_cls, args)
         self.args = args
-        self.args._num_players = self.game_cls.num_players() + self.game_cls.has_draw()
-        
         train_iter = self.args.startIter
 
         if self.args.load_model:
@@ -204,6 +204,8 @@ class Coach:
         self.ready_queue = mp.Queue()
         self.file_queue = mp.Queue()
         self.result_queue = mp.Queue()
+        self.file_queue_drained = False
+        self.result_queue_drained = False
         self.completed = mp.Value('i', 0)
         self.games_played = mp.Value('i', 0)
         if self.args.run_name != '':
@@ -327,7 +329,7 @@ class Coach:
     @_set_state(TrainState.SELF_PLAY)
     def processSelfPlayBatches(self, iteration):
         sample_time = AverageMeter()
-        bar = Bar('Generating Samples', max=self.args.gamesPerIteration)
+        bar = tqdm(total=self.args.gamesPerIteration, desc='Generating Samples')
         end = time()
 
         n = 0
@@ -351,32 +353,42 @@ class Coach:
                 n = size
                 end = time()
 
-            bar.suffix = f'({size}/{self.args.gamesPerIteration}) Sample Time: {sample_time.avg:.3f}s | Total: {bar.elapsed_td} | ETA: {bar.eta_td:}'
-            bar.goto(size)
+            bar.set_postfix_str(f'Sample Time: {sample_time.avg:.3f}s')
+            bar.update(size - bar.n)
+
             self.sample_time = sample_time.avg
-            self.iter_time = bar.elapsed_td
-            self.eta = bar.eta_td
+            self.iter_time = timedelta(seconds=round(bar.format_dict['elapsed']))
+            rate = bar.format_dict['rate']
+            self.eta = timedelta(seconds=round((bar.total - size) / rate)) if rate else timedelta(0)
 
         if not self.stop_agents.is_set(): self.stop_agents.set()
-        bar.update()
-        bar.finish()
+        bar.close()
         self.writer.add_scalar('loss/sample_time', sample_time.avg, iteration)
         print()
 
     @_set_state(TrainState.SAVE_SAMPLES)
     def saveIterationSamples(self, iteration):
-        num_samples = self.file_queue.qsize()
+        samples = []
+        completed_workers = 0
+        while completed_workers < len(self.agents):
+            sample = self.file_queue.get()
+            if isinstance(sample, str) and sample == QUEUE_SENTINEL:
+                completed_workers += 1
+            else:
+                samples.append(sample)
+
+        num_samples = len(samples)
         print(f'Saving {num_samples} samples')
 
         data_tensor = torch.zeros([num_samples, *self.game_cls.observation_size()])
         policy_tensor = torch.zeros([num_samples, self.game_cls.action_size()])
         value_tensor = torch.zeros([num_samples, self.game_cls.num_players() + self.game_cls.has_draw()])
-        for i in range(num_samples):
+        for i, (data, policy, value) in enumerate(samples):
             # TODO: for fast sims store only value data to train on
-            data, policy, value = self.file_queue.get()
             data_tensor[i] = torch.from_numpy(data)
             policy_tensor[i] = torch.from_numpy(policy)
             value_tensor[i] = torch.from_numpy(value)
+        self.file_queue_drained = True
 
         folder = os.path.join(self.args.data, self.args.run_name)
         filename = os.path.join(folder, get_iter_file(iteration).replace('.pkl', ''))
@@ -391,34 +403,40 @@ class Coach:
 
     @_set_state(TrainState.PROCESS_RESULTS)
     def processGameResults(self, iteration):
-        num_games = self.result_queue.qsize()
-        wins, draws, avg_game_length = get_game_results(self.result_queue, self.game_cls)
+        wins, draws, avg_game_length = get_game_results(
+            self.result_queue, self.game_cls, num_workers=len(self.agents)
+        )
+        self.result_queue_drained = True
+        num_games = sum(wins) + draws
 
         for i in range(len(wins)):
             self.writer.add_scalar(f'win_rate/player{i}', (
                     wins[i] + (0.5 * draws if self.args.use_draws_for_winrate else 0)
-            ) / num_games, iteration)
-        self.writer.add_scalar('win_rate/draws', draws / num_games, iteration)
+            ) / num_games if num_games else 0, iteration)
+        self.writer.add_scalar('win_rate/draws', draws / num_games if num_games else 0, iteration)
         self.writer.add_scalar('win_rate/avg_game_length', avg_game_length, iteration)
 
     @_set_state(TrainState.KILL_AGENTS)
     def killSelfPlayAgents(self):
-        # clear queues to prevent deadlocking
-        for _ in range(self.ready_queue.qsize()):
+        # Discard queued data before joining workers so their queue feeders can finish.
+        while True:
             try:
                 self.ready_queue.get_nowait()
             except Empty:
                 break
-        for _ in range(self.file_queue.qsize()):
-            try:
-                self.file_queue.get_nowait()
-            except Empty:
-                break
-        for _ in range(self.result_queue.qsize()):
-            try:
-                self.result_queue.get_nowait()
-            except Empty:
-                break
+
+        def drain_until_sentinels(queue, worker_count):
+            completed_workers = 0
+            while completed_workers < worker_count:
+                item = queue.get()
+                if isinstance(item, str) and item == QUEUE_SENTINEL:
+                    completed_workers += 1
+
+        worker_count = len(self.agents)
+        if not self.file_queue_drained:
+            drain_until_sentinels(self.file_queue, worker_count)
+        if not self.result_queue_drained:
+            drain_until_sentinels(self.result_queue, worker_count)
 
         for agent in self.agents:
             agent.join()
@@ -435,6 +453,8 @@ class Coach:
         self.ready_queue = mp.Queue()
         self.file_queue = mp.Queue()
         self.result_queue = mp.Queue()
+        self.file_queue_drained = False
+        self.result_queue_drained = False
         self.completed = mp.Value('i', 0)
         self.games_played = mp.Value('i', 0)
 
@@ -476,9 +496,11 @@ class Coach:
                 nonlocal num_train_steps
                 num_train_steps //= sample_counter
 
-            train_steps = len(dataset) // self.args.train_batch_size \
-               if train_on_all else (num_train_steps // self.args.train_batch_size
-                   if self.args.autoTrainSteps else self.args.train_steps_per_iteration)
+            train_steps = (
+                len(dataset) // self.args.train_batch_size * self.args.train_sample_ratio if train_on_all
+                else (num_train_steps // self.args.train_batch_size * self.args.train_sample_ratio if self.args.autoTrainSteps
+                else self.args.train_steps_per_iteration)
+            )
 
             result = self.train_net.train(dataloader, train_steps)
 
@@ -522,7 +544,7 @@ class Coach:
             [add_tensor_dataset(i, datasets) for i in range(max(1, iteration - current_history_size), iteration + 1)]
             self.loss_pi, self.loss_v = train_data(datasets)
 
-        self.writer.add_scalar('loss/policy', self.loss_pi, iteration)  # TODO: policy loss not showing up in tensorboard
+        self.writer.add_scalar('loss/policy', self.loss_pi, iteration)
         self.writer.add_scalar('loss/value', self.loss_v, iteration)
         self.writer.add_scalar('loss/total', self.loss_pi + self.loss_v, iteration)
 

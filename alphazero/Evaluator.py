@@ -330,13 +330,14 @@ class MCTSEvaluator(BaseEvaluator):
                  num_sims: int = None, max_search_depth: int = None, max_search_time: float = None,
                  best_actions_temp: float = 1, average_children=False):
         super().__init__(model)
+        self.args = args
         self.average_children = average_children
         self.best_actions_temp = best_actions_temp
 
         self.num_sims = num_sims
         self.max_search_depth = max_search_depth
         self.max_search_time = max_search_time
-        self._mcts = MCTS(args)
+        self._mcts = None
         self._curr_num_sims = 0
 
     def _search(self, state: GameState, model: Callable[[GameState], Tuple[np.ndarray, np.ndarray]],
@@ -364,6 +365,15 @@ class MCTSEvaluator(BaseEvaluator):
             self._curr_num_sims = num_sims
 
     def _run(self, state: GameState, *args, **kwargs) -> None:
+        if self._mcts is None:
+            self._mcts = MCTS(
+                self.args.root_noise_frac,
+                self.args.root_policy_temp,
+                self.args.min_discount,
+                self.args.fpu_reduction,
+                self.args.cpuct,
+                state.num_players() + state.has_draw()
+            )
         if self.model is None:
             # always use uniform value and policy if no model is given
             # v = np.zeros(state.num_players() + 1, dtype=np.float32)

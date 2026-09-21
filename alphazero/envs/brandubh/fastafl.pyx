@@ -13,8 +13,7 @@ import pyximport
 
 pyximport.install(setup_args={'include_dirs': np.get_include()})
 
-#from alphazero.cGame import GameState
-#from alphazero.cGame cimport GameState
+from alphazero.Game import GameState
 from boardgame import Square
 from boardgame.board cimport Square
 from fastafl.cengine import Board
@@ -43,6 +42,16 @@ cdef tuple OBS_SIZE = (NUM_CHANNELS, b.width, b.height)
 cdef int DRAW_MOVE_COUNT = 100
 cdef int NUM_BLACK_PIECES = np.sum(b._state == 2)
 cdef int NUM_WHITE_PIECES = np.sum(b._state == 1)
+cdef int REPETITION_COUNT = 3
+
+
+cpdef void set_num_stacked_observations(int count):
+    global NUM_STACKED_OBSERVATIONS, NUM_CHANNELS, OBS_SIZE
+    if count < 2:
+        raise ValueError('num_stacked_observations must be at least 2')
+    NUM_STACKED_OBSERVATIONS = count
+    NUM_CHANNELS = NUM_BASE_CHANNELS * count
+    OBS_SIZE = (NUM_CHANNELS, b.width, b.height)
 
 
 cpdef tuple get_move(Board board, int action):
@@ -107,16 +116,13 @@ cpdef np.ndarray _get_observation(Board board, int const_max_players, int const_
     cdef list past, obs = []
     cdef Py_ssize_t i
 
-    if past_states:
-        past = past_states.copy()
-        past.insert(0, board)
-        for i in range(past_obs):
-            if board.num_turns < i:
-                obs.extend(_add_empty(board))
-            else:
-                obs.extend(_add_obs(past[i], const_max_players, const_max_turns))
-    else:
-        obs.extend(_add_obs(board, const_max_players, const_max_turns))
+    past = past_states.copy()
+    past.insert(0, board)
+    for i in range(past_obs):
+        if i >= len(past):
+            obs.extend(_add_empty(board))
+        else:
+            obs.extend(_add_obs(past[i], const_max_players, const_max_turns))
 
     return np.array(obs, dtype=np.float32)
 
@@ -125,12 +131,19 @@ cdef class Game:  #(GameState):
     cdef public int _player
     cdef public int _turns
     cdef public int last_action
+    cdef list _past_states
+    cdef dict _position_counts
 
     def __init__(self, _board=None):
         self._board = _board or _get_board()
         self._player = 0
         self._turns = 0
         self.last_action = -1
+        self._past_states = []
+        self._position_counts = {self._position_key(): 1}
+
+    cdef tuple _position_key(self):
+        return (self._board._state.tobytes(), self._board.to_play())
 
     def __eq__(self, other: 'Game') -> bool:
         return self.__dict__ == other.__dict__
@@ -151,6 +164,8 @@ cdef class Game:  #(GameState):
         g._player = self._player
         g._turns = self.turns
         g.last_action = self.last_action
+        g._past_states = [board.copy() for board in self._past_states]
+        g._position_counts = self._position_counts.copy()
         return g
 
     @staticmethod
@@ -173,6 +188,10 @@ cdef class Game:  #(GameState):
     def observation_size():
         return OBS_SIZE
 
+    @staticmethod
+    def set_num_stacked_observations(count):
+        set_num_stacked_observations(count)
+
     cpdef int _next_player(self, int player, int turns=1):
         return (player + turns) % Game.num_players()
 
@@ -192,16 +211,22 @@ cdef class Game:  #(GameState):
 
     cpdef void play_action(self, int action):
         self.last_action = action
+        self._past_states.insert(0, self._board.copy())
+        if len(self._past_states) > NUM_STACKED_OBSERVATIONS - 1:
+            self._past_states.pop()
         cdef tuple move = get_move(self._board, action)
         self._board.move(move[0], move[1], check_turn=False, _check_valid=False, _check_win=False)
         self._update_turn()
+        position = self._position_key()
+        self._position_counts[position] = self._position_counts.get(position, 0) + 1
 
     cpdef np.ndarray win_state(self):
         cdef np.ndarray[dtype=np.uint8_t, ndim=1] result = np.zeros(NUM_PLAYERS + 1, dtype=np.uint8)
         cdef int winner
 
-        # Check if maximum moves have been exceeded
-        if self.turns >= DRAW_MOVE_COUNT:
+        if GameState.draw_state(self) or GameState.draw_by_repetition(
+                self._position_counts, self._position_key(), REPETITION_COUNT
+        ):
             result[NUM_PLAYERS] = 1
         else:
             winner = self._board.get_winner()
@@ -259,6 +284,15 @@ cdef class Game:  #(GameState):
 
                 new_state = self.clone()
                 new_state._board = new_b
+                new_state._past_states = []
+                for past_board in self._past_states:
+                    transformed_past = past_board.copy()
+                    transformed_past._state = np.rot90(
+                        np.array(past_board._state, dtype=np.float32), i
+                    )
+                    if flip:
+                        transformed_past._state = np.fliplr(transformed_past._state)
+                    new_state._past_states.append(transformed_past)
                 syms[(i - 1) * 2 + int(flip)] = (new_state, new_pi)
 
         return syms

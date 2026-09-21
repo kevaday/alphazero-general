@@ -1,3 +1,28 @@
+from queue import Empty
+
+
+QUEUE_SENTINEL = '__alphazero_queue_complete__'
+
+
+class AverageMeter:
+    """Track the current value and running average of a metric."""
+
+    def __init__(self):
+        self.reset()
+
+    def reset(self):
+        self.val = 0
+        self.avg = 0
+        self.sum = 0
+        self.count = 0
+
+    def update(self, val, n=1):
+        self.val = val
+        self.sum += val * n
+        self.count += n
+        self.avg = self.sum / self.count
+
+
 class dotdict(dict):
     def __getattr__(self, name):
         if name.startswith('__'):
@@ -31,14 +56,22 @@ def const_temp_scaling(temp, *args, **kwargs) -> float:
     return temp
 
 
-def get_game_results(result_queue, game_cls, _get_index=None):
-    num_games = result_queue.qsize()
+def get_game_results(result_queue, game_cls, _get_index=None, num_workers=None):
     wins = [0] * game_cls.num_players()
     draws = 0
     game_len_sum = 0
+    completed_workers = 0
 
-    for _ in range(num_games):
-        state, winstate, agent_id = result_queue.get()
+    while num_workers is None or completed_workers < num_workers:
+        try:
+            result = result_queue.get() if num_workers is not None else result_queue.get_nowait()
+        except Empty:
+            break
+        if isinstance(result, str) and result == QUEUE_SENTINEL:
+            completed_workers += 1
+            continue
+
+        state, winstate, agent_id = result
         game_len_sum += state.turns
 
         for player, is_win in enumerate(winstate):
@@ -49,6 +82,7 @@ def get_game_results(result_queue, game_cls, _get_index=None):
                     index = _get_index(player, agent_id) if _get_index else player
                     wins[index] += 1
 
+    num_games = sum(wins) + draws
     return wins, draws, game_len_sum / num_games if num_games else 0
 
 

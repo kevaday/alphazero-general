@@ -8,6 +8,7 @@ import itertools
 import time
 
 from alphazero.MCTS import MCTS
+from alphazero.utils import QUEUE_SENTINEL
 
 
 class SelfPlayAgent(mp.Process):
@@ -60,10 +61,18 @@ class SelfPlayAgent(mp.Process):
             self.mcts.append(self._get_mcts())
 
     def _get_mcts(self):
+        mcts_args = (
+            self.args.root_noise_frac,
+            self.args.root_policy_temp,
+            self.args.min_discount,
+            self.args.fpu_reduction,
+            self.args.cpuct,
+            self.game_cls.num_players() + self.game_cls.has_draw()
+        )
         if self._is_arena:
-            return tuple([MCTS(self.args) for _ in range(self.game_cls.num_players())])
+            return tuple([MCTS(*mcts_args) for _ in range(self.game_cls.num_players())])
         else:
-            return MCTS(self.args)
+            return MCTS(*mcts_args)
 
     def _mcts(self, index: int) -> MCTS:
         mcts = self.mcts[index]
@@ -93,13 +102,14 @@ class SelfPlayAgent(mp.Process):
                 if self.stop_event.is_set(): break
                 self.playMoves()
 
+            if not self._is_arena:
+                self.output_queue.put(QUEUE_SENTINEL)
+                self.result_queue.put(QUEUE_SENTINEL)
+            else:
+                self.result_queue.put(QUEUE_SENTINEL)
+
             with self.complete_count.get_lock():
                 self.complete_count.value += 1
-            if not self._is_arena:
-                self.output_queue.close()
-                self.output_queue.join_thread()
-                self.result_queue.close()
-                self.result_queue.join_thread()
         except Exception:
             print(traceback.format_exc())
 
@@ -183,14 +193,13 @@ class SelfPlayAgent(mp.Process):
 
             winstate = self.games[i].win_state()
             if winstate.any():
-                self.result_queue.put((self.games[i].clone(), winstate, self.id))
-
                 lock = self.games_played.get_lock()
                 lock.acquire()
                 if self.games_played.value < self.args.gamesPerIteration:
                     self.games_played.value += 1
                     lock.release()
 
+                    self.result_queue.put((self.games[i].clone(), winstate, self.id))
                     if not self._is_arena:
                         for hist in self.histories[i]:
                             self._check_pause()

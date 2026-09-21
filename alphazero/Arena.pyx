@@ -2,8 +2,7 @@
 from alphazero.Game import GameState
 from alphazero.GenericPlayers import BasePlayer
 from alphazero.SelfPlayAgent import SelfPlayAgent
-from alphazero.pytorch_classification.utils import Bar, AverageMeter
-from alphazero.utils import dotdict, get_game_results
+from alphazero.utils import dotdict, get_game_results, AverageMeter
 
 from typing import Callable, List, Tuple, Optional
 from enum import Enum
@@ -14,6 +13,8 @@ import numpy as np
 import torch
 import random
 import time
+from datetime import timedelta
+from tqdm import tqdm
 
 
 class _PlayerStats:
@@ -201,7 +202,7 @@ class Arena:
         self.stop_event = mp.Event()
         self.pause_event = mp.Event()
         eps_time = AverageMeter()
-        bar = Bar('Arena.play_games', max=num)
+        bar = tqdm(total=num, desc='Arena.play_games')
         end = time.time()
         self.__reset_stats()
 
@@ -210,7 +211,7 @@ class Arena:
             self.__check_players_valid()
 
             def empty_queue(q: mp.Queue):
-                for _ in range(q.qsize()):
+                while True:
                     try:
                         q.get_nowait()
                     except Empty:
@@ -298,21 +299,24 @@ class Arena:
                 self.draws += draws
                 self.__update_winrates()
 
-                bar.suffix = '({eps}/{maxeps}) Winrates: {wr} | Eps Time: {et:.3f}s | Total: {total:} | ETA: {eta:}' \
+                elapsed = timedelta(seconds=bar.format_dict['elapsed'])
+                rate = bar.format_dict['rate']
+                eta = timedelta(seconds=(num - size) / rate) if rate else timedelta(0)
+                bar.set_postfix_str('({eps}/{maxeps}) Winrates: {wr} | Eps Time: {et:.3f}s | Total: {total} | ETA: {eta}' \
                     .format(
-                        eps=size, maxeps=num, et=sample_time.avg, total=bar.elapsed_td, eta=bar.eta_td,
+                        eps=size, maxeps=num, et=sample_time.avg, total=elapsed, eta=eta,
                         wr=[round(w, 3) for w in self.winrates()]
                     )
-                bar.goto(size)
+                )
+                bar.update(size - bar.n)
 
                 self.games_played = size
                 self.eps_time = sample_time.avg
-                self.total_time = bar.elapsed_td
-                self.eta = bar.eta_td
+                self.total_time = elapsed
+                self.eta = eta
 
             self.stop_event.set()
-            bar.update()
-            bar.finish()
+            bar.close()
 
             # empty queues to prevent deadlock
             empty_queue(ready_queue)
@@ -359,18 +363,21 @@ class Arena:
                 self.__update_winrates()
                 eps_time.update(time.time() - end)
                 end = time.time()
-                bar.suffix = '({eps}/{maxeps}) Winrates: {wr} | Eps Time: {et:.3f}s | Total: {total:} | ETA: {eta:}' \
+                elapsed = timedelta(seconds=bar.format_dict['elapsed'])
+                rate = bar.format_dict['rate']
+                eta = timedelta(seconds=(num - eps) / rate) if rate else timedelta(0)
+                bar.set_postfix_str('({eps}/{maxeps}) Winrates: {wr} | Eps Time: {et:.3f}s | Total: {total} | ETA: {eta}' \
                     .format(
-                        eps=eps, maxeps=num, et=eps_time.avg, total=bar.elapsed_td, eta=bar.eta_td,
+                        eps=eps, maxeps=num, et=eps_time.avg, total=elapsed, eta=eta,
                         wr=[round(w, 3) for w in self.winrates()]
                     )
-                bar.next()
+                )
+                bar.update(1)
                 self.games_played = eps
                 self.eps_time = eps_time.avg
-                self.total_time = bar.elapsed_td
-                self.eta = bar.eta_td
+                self.total_time = elapsed
+                self.eta = eta
 
-            bar.update()
-            bar.finish()
+            bar.close()
 
         return self.wins(), self.draws, self.winrates()

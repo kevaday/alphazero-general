@@ -1,13 +1,14 @@
 from alphazero.NNetArchitecture import ResNet, FullyConnected
-from alphazero.pytorch_classification.utils import Bar, AverageMeter
 from alphazero.Game import GameState
-from alphazero.utils import dotdict
+from alphazero.utils import dotdict, AverageMeter
 from threading import Event
 from abc import ABC, abstractmethod
 from typing import Tuple, Optional
 
 
 import torch.optim as optim
+from datetime import timedelta
+from tqdm import tqdm
 import numpy as np
 import warnings
 import torch
@@ -86,6 +87,11 @@ class BaseWrapper(ABC):
 class NNetWrapper(BaseWrapper):
     def __init__(self, game_cls, args):
         super().__init__(game_cls, args)
+
+        set_stacked_observations = getattr(game_cls, 'set_num_stacked_observations', None)
+        if set_stacked_observations is not None:
+            set_stacked_observations(args.num_stacked_observations)
+
         self.nnet = None
         self._load_nnet(args)
         self.action_size = game_cls.action_size()
@@ -132,7 +138,7 @@ class NNetWrapper(BaseWrapper):
         if self.verbose:
             print(f'Current LR: {self.optimizer.param_groups[0]["lr"]}')
 
-        bar = Bar(f'Training Net', max=train_steps)
+        bar = tqdm(total=train_steps, desc='Training Net')
         self.current_step = 0
         while self.current_step < train_steps and not self.stop_train.is_set():
             for batch_idx, batch in enumerate(batches):
@@ -178,28 +184,30 @@ class NNetWrapper(BaseWrapper):
                 self.l_v = v_losses.avg
                 self.l_total = self.l_pi + self.l_v
                 self.step_time = data_time.avg + batch_time.avg
-                self.elapsed_time = bar.elapsed_td
-                self.eta = bar.eta_td
+                elapsed = timedelta(seconds=bar.format_dict['elapsed'])
+                rate = bar.format_dict['rate']
+                eta = timedelta(seconds=(train_steps - bar.n) / rate) if rate else timedelta(0)
+                self.elapsed_time = elapsed
+                self.eta = eta
 
                 # plot progress
-                bar.suffix = '({step}/{size}) Data: {data:.3f}s | Batch: {bt:.3f}s | Total: {total:} | ETA: {eta:} | Loss_pi: {lpi:.4f} | Loss_v: {lv:.3f}'.format(
+                bar.set_postfix_str('({step}/{size}) Data: {data:.3f}s | Batch: {bt:.3f}s | Total: {total} | ETA: {eta} | Loss_pi: {lpi:.4f} | Loss_v: {lv:.3f}'.format(
                     step=self.current_step,
                     size=train_steps,
                     data=data_time.avg,
                     bt=batch_time.avg,
-                    total=bar.elapsed_td,
-                    eta=bar.eta_td,
+                    total=elapsed,
+                    eta=eta,
                     lpi=pi_losses.avg,
                     lv=v_losses.avg,
-                )
-                bar.next()
+                ))
+                bar.update(1)
 
         self.scheduler.step(
             (pi_losses.avg + v_losses.avg) if isinstance(
                 self.scheduler, optim.lr_scheduler.ReduceLROnPlateau) else None
         )
-        bar.update()  # TODO: division by zero when train steps is too small (0?)
-        bar.finish()
+        bar.close()
         print()
 
         return pi_losses.avg, v_losses.avg

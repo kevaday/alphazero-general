@@ -11,8 +11,7 @@ from alphazero.utils import dotdict
 args = get_args(
     run_name='brandubh_fastafl',
     workers=4,
-    max_moves=100,
-    num_stacked_observations=1,
+    num_stacked_observations=2,
     cpuct=1.25,
     symmetricSamples=True,
     numMCTSSims=250,

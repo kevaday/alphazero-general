@@ -11,7 +11,6 @@ from libc.math cimport sqrt
 
 import numpy as np
 cimport numpy as np
-from alphazero.utils import dotdict
 
 
 DTYPE = np.float32
@@ -56,10 +55,10 @@ cdef class Node:
     cdef public float p
     cdef public int player
 
-    def __init__(self, int action, int num_players):
+    def __init__(self, int action, int winstate_size):
         self._children = []
         self.a = action
-        self.e = np.zeros(num_players, dtype=np.uint8)
+        self.e = np.zeros(winstate_size, dtype=np.uint8)
         self.q = 0
         self.v = 0
         self.n = 0
@@ -73,8 +72,8 @@ cdef class Node:
     # def __reduce__(self):
     #    return rebuild_node, ([n.__reduce__() for n in self._children], self.a, self.cpuct, self._players, self.e, self.q, self.n, self.p, self.player)
 
-    cdef void add_children(self, np.ndarray v, int num_players):
-        self._children.extend([Node(a, num_players) for a, valid in enumerate(v) if valid])
+    cdef void add_children(self, np.ndarray v, int winstate_size):
+        self._children.extend([Node(a, winstate_size) for a, valid in enumerate(v) if valid])
         # shuffle children
         np.random.shuffle(self._children)
 
@@ -122,7 +121,7 @@ cdef class MCTS:
     cdef public float min_discount
     cdef public float fpu_reduction
     cdef public float cpuct
-    cdef public int _num_players
+    cdef public int winstate_size
     cdef public Node _root
     cdef public Node _curnode
     cdef public list _path
@@ -130,14 +129,15 @@ cdef class MCTS:
     cdef public int max_depth
     cdef public int _discount_max_depth
 
-    def __init__(self, args: dotdict):
-        self.root_noise_frac = args.root_noise_frac
-        self.root_temp = args.root_policy_temp
-        self.min_discount = args.min_discount
-        self.fpu_reduction = args.fpu_reduction
-        self.cpuct = args.cpuct
-        self._num_players = args._num_players
-        self._root = Node(-1, self._num_players)
+    def __init__(self, float root_noise_frac, float root_temp, float min_discount,
+                 float fpu_reduction, float cpuct, int winstate_size):
+        self.root_noise_frac = root_noise_frac
+        self.root_temp = root_temp
+        self.min_discount = min_discount
+        self.fpu_reduction = fpu_reduction
+        self.cpuct = cpuct
+        self.winstate_size = winstate_size
+        self._root = Node(-1, self.winstate_size)
         self._curnode = self._root
         self._path = []
         self.depth = 0
@@ -145,14 +145,14 @@ cdef class MCTS:
         self._discount_max_depth = 0
 
     def __repr__(self):
-        return 'MCTS(root_noise_frac={}, root_temp={}, min_discount={}, fpu_reduction={}, cpuct={}, _num_players={}, ' \
+        return 'MCTS(root_noise_frac={}, root_temp={}, min_discount={}, fpu_reduction={}, cpuct={}, winstate_size={}, ' \
                '_root={}, _curnode={}, _path={}, depth={}, max_depth={})' \
             .format(self.root_noise_frac, self.root_temp, self.min_discount,
-                    self.fpu_reduction,self.cpuct, self._num_players, self._root,
+                    self.fpu_reduction, self.cpuct, self.winstate_size, self._root,
                     self._curnode, self._path, self.depth, self.max_depth)
 
     cpdef void reset(self):
-        self._root = Node(-1, self._num_players)
+        self._root = Node(-1, self.winstate_size)
         self._curnode = self._root
         self._path = []
         self.depth = 0
@@ -184,7 +184,7 @@ cdef class MCTS:
 
     cpdef void update_root(self, object gs, int a):
         if not self._root._children:
-            self._root.add_children(gs.valid_moves(), self._num_players)
+            self._root.add_children(gs.valid_moves(), self.winstate_size)
 
         cdef Node c
         for c in self._root._children:
@@ -223,7 +223,7 @@ cdef class MCTS:
         if self._curnode.n == 0:
             self._curnode.player = leaf.player
             self._curnode.e = leaf.win_state()
-            self._curnode.add_children(leaf.valid_moves(), self._num_players)
+            self._curnode.add_children(leaf.valid_moves(), self.winstate_size)
 
         return leaf
 

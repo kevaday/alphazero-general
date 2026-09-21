@@ -128,7 +128,14 @@ class MCTSPlayer(BasePlayer):
         self.mcts.update_root(state, action)
 
     def reset(self):
-        self.mcts = MCTS(self.args)
+        self.mcts = MCTS(
+            self.args.root_noise_frac,
+            self.args.root_policy_temp,
+            self.args.min_discount,
+            self.args.fpu_reduction,
+            self.args.cpuct,
+            self.game_cls.num_players() + self.game_cls.has_draw()
+        )
 
     def play(self, state) -> int:
         self.mcts.search(state, self.nn, self.args.numMCTSSims, self.args.add_root_noise, self.args.add_root_temp)

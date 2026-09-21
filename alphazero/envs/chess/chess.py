@@ -41,6 +41,7 @@ def _int2base(x, base, length):
 
 class Game(GameState):
     def __init__(self):
+        raise NotImplementedError
         super().__init__(self._get_board())
 
     @staticmethod

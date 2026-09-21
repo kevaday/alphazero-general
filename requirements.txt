@@ -4,3 +4,4 @@ cython
 tensorboard
 tensorboardX
 PySide6
+tqdm

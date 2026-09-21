@@ -166,6 +166,7 @@ cdef class Game:  #(GameState):
     cdef public Board _board
 
     def __init__(self, _board=None):
+        raise NotImplementedError('Stratego env is not currently functional')
         self._board = _board or Board()
 
     def __eq__(self, other: 'Game') -> bool:

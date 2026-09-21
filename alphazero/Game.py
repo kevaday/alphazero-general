@@ -62,6 +62,16 @@ class GameState(ABC):
         """Returns True if the game has a draw condition."""
         return True
 
+    def draw_state(self) -> bool:
+        """Return whether a state has reached the game's move-limit draw."""
+        max_turns = self.max_turns()
+        return max_turns is not None and self.turns >= max_turns
+
+    @staticmethod
+    def draw_by_repetition(position_counts, current_position, repetitions: int = 3) -> bool:
+        """Return whether the current position has occurred enough times."""
+        return position_counts.get(current_position, 0) >= repetitions
+
     @property
     def player(self) -> int:
         return self._player
