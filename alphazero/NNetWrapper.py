@@ -184,20 +184,14 @@ class NNetWrapper(BaseWrapper):
                 self.l_v = v_losses.avg
                 self.l_total = self.l_pi + self.l_v
                 self.step_time = data_time.avg + batch_time.avg
-                elapsed = timedelta(seconds=bar.format_dict['elapsed'])
+                self.elapsed_time = timedelta(seconds=bar.format_dict['elapsed'])
                 rate = bar.format_dict['rate']
-                eta = timedelta(seconds=(train_steps - bar.n) / rate) if rate else timedelta(0)
-                self.elapsed_time = elapsed
-                self.eta = eta
+                self.eta = timedelta(seconds=(train_steps - bar.n) / rate) if rate else timedelta(0)
 
                 # plot progress
-                bar.set_postfix_str('({step}/{size}) Data: {data:.3f}s | Batch: {bt:.3f}s | Total: {total} | ETA: {eta} | Loss_pi: {lpi:.4f} | Loss_v: {lv:.3f}'.format(
-                    step=self.current_step,
-                    size=train_steps,
+                bar.set_postfix_str('Data: {data:.3f}s | Batch: {bt:.3f}s | Loss_pi: {lpi:.4f} | Loss_v: {lv:.3f}'.format(
                     data=data_time.avg,
                     bt=batch_time.avg,
-                    total=elapsed,
-                    eta=eta,
                     lpi=pi_losses.avg,
                     lv=v_losses.avg,
                 ))
