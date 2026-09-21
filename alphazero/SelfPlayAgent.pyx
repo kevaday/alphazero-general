@@ -87,6 +87,9 @@ class SelfPlayAgent(mp.Process):
 
     def run(self):
         try:
+            set_stacked_observations = getattr(self.game_cls, 'set_num_stacked_observations', None)
+            if set_stacked_observations is not None:
+                set_stacked_observations(self.args.num_stacked_observations)
             np.random.seed()
             while not self.stop_event.is_set() and self.games_played.value < self.args.gamesPerIteration:
                 self._check_pause()

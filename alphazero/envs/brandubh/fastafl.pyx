@@ -240,7 +240,8 @@ cdef class Game:  #(GameState):
             self._board,
             NUM_PLAYERS,
             DRAW_MOVE_COUNT,
-            NUM_STACKED_OBSERVATIONS
+            NUM_STACKED_OBSERVATIONS,
+            self._past_states
         )
 
     cpdef list symmetries(self, np.ndarray pi):

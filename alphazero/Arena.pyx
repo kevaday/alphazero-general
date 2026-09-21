@@ -299,21 +299,16 @@ class Arena:
                 self.draws += draws
                 self.__update_winrates()
 
-                elapsed = timedelta(seconds=bar.format_dict['elapsed'])
-                rate = bar.format_dict['rate']
-                eta = timedelta(seconds=(num - size) / rate) if rate else timedelta(0)
-                bar.set_postfix_str('({eps}/{maxeps}) Winrates: {wr} | Eps Time: {et:.3f}s | Total: {total} | ETA: {eta}' \
-                    .format(
-                        eps=size, maxeps=num, et=sample_time.avg, total=elapsed, eta=eta,
-                        wr=[round(w, 3) for w in self.winrates()]
-                    )
+                bar.set_postfix_str('Winrates: {wr} | Eps Time: {et:.3f}s' \
+                    .format(wr=[round(w, 3) for w in self.winrates()], et=sample_time.avg)
                 )
                 bar.update(size - bar.n)
 
                 self.games_played = size
                 self.eps_time = sample_time.avg
-                self.total_time = elapsed
-                self.eta = eta
+                self.total_time = timedelta(seconds=bar.format_dict['elapsed'])
+                rate = bar.format_dict['rate']
+                self.eta = timedelta(seconds=(num - size) / rate) if rate else timedelta(0)
 
             self.stop_event.set()
             bar.close()
