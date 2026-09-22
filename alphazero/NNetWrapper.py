@@ -175,6 +175,8 @@ class NNetWrapper(BaseWrapper):
                 # compute gradient and do SGD step
                 self.optimizer.zero_grad()
                 total_loss.backward()
+                if self.args.grad_clip:
+                    torch.nn.utils.clip_grad_norm_(self.nnet.parameters(), max_norm=self.args.grad_clip)
                 self.optimizer.step()
 
                 # measure elapsed time
@@ -184,9 +186,9 @@ class NNetWrapper(BaseWrapper):
                 self.l_v = v_losses.avg
                 self.l_total = self.l_pi + self.l_v
                 self.step_time = data_time.avg + batch_time.avg
-                self.elapsed_time = timedelta(seconds=bar.format_dict['elapsed'])
+                self.elapsed_time = timedelta(seconds=round(bar.format_dict['elapsed']))
                 rate = bar.format_dict['rate']
-                self.eta = timedelta(seconds=(train_steps - bar.n) / rate) if rate else timedelta(0)
+                self.eta = timedelta(seconds=round((train_steps - bar.n) / rate)) if rate else timedelta(0)
 
                 # plot progress
                 bar.set_postfix_str('Data: {data:.3f}s | Batch: {bt:.3f}s | Loss_pi: {lpi:.4f} | Loss_v: {lv:.3f}'.format(

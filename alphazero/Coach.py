@@ -5,7 +5,7 @@ pyxinstall(setup_args={'include_dirs': get_include()})
 from alphazero.SelfPlayAgent import SelfPlayAgent
 from alphazero.utils import (
     QUEUE_SENTINEL, get_iter_file, dotdict, get_game_results, default_temp_scaling,
-    const_temp_scaling, AverageMeter
+    dropoff_temp_scaling, const_temp_scaling, AverageMeter
 )
 from alphazero.Arena import Arena
 from alphazero.GenericPlayers import RawMCTSPlayer, NNPlayer, MCTSPlayer
@@ -51,7 +51,7 @@ DEFAULT_ARGS = dotdict({
     'maxTrainHistoryWindow': 10,
     'trainHistoryIncrementIters': 2,
     'min_discount': 1,
-    'fpu_reduction': 0,
+    'fpu_reduction': 0.25,
     'num_stacked_observations': 2,  # Useful for repetition-based draw detection
     'numWarmupIters': 1,  # Iterations where games are played randomly, 0 for none
     'skipSelfPlayIters': None,
@@ -66,7 +66,7 @@ DEFAULT_ARGS = dotdict({
     'startTemp': 1,
     'temp_scaling_fn': const_temp_scaling,
     'root_policy_temp': 1.1,
-    'root_noise_frac': 0.1,
+    'root_noise_frac': 0.3,
     'add_root_noise': True,
     'add_root_temp': True,
     'compareWithBaseline': True,
@@ -85,20 +85,15 @@ DEFAULT_ARGS = dotdict({
     'min_next_model_winrate': 0.52,
     'use_draws_for_winrate': True,
     'load_model': True,
-    'cpuct': 1.25,
-    'value_loss_weight': 1.5,
+    'cpuct': 2,
+    'value_loss_weight': 1,
     'checkpoint': 'checkpoint',
     'data': 'data',
 
-    'scheduler': torch.optim.lr_scheduler.MultiStepLR,
+    'scheduler': torch.optim.lr_scheduler.CosineAnnealingLR,
     'scheduler_args': dotdict({
-        'milestones': [75, 125],
-        'gamma': 0.1
-
-        # 'min_lr': 1e-4,
-        # 'patience': 3,
-        # 'cooldown': 1,
-        # 'verbose': False
+        'T_max': 50,
+        'eta_min': 1e-4
     }),
 
     'lr': 1e-2,
@@ -107,17 +102,18 @@ DEFAULT_ARGS = dotdict({
         'momentum': 0.9,
         'weight_decay': 1e-4
     }),
+    'grad_clip': 1.0,
 
     'nnet_type': 'resnet',  # 'resnet' or 'fc'
-    'num_channels': 32,
+    'num_channels': 64,
     'depth': 4,
-    'value_head_channels': 16,
-    'policy_head_channels': 16,
+    'value_head_channels': 1,
+    'policy_head_channels': 2,
 
     # fc only uses the following
     'input_fc_layers': [1024] * 4,  # only for fc networks
-    'value_dense_layers': [512, 64],
-    'policy_dense_layers': [512, 256]
+    'value_dense_layers': [64],
+    'policy_dense_layers': []
 })
 
 

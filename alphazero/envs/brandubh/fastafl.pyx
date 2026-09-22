@@ -47,8 +47,6 @@ cdef int REPETITION_COUNT = 3
 
 cpdef void set_num_stacked_observations(int count):
     global NUM_STACKED_OBSERVATIONS, NUM_CHANNELS, OBS_SIZE
-    if count < 2:
-        raise ValueError('num_stacked_observations must be at least 2')
     NUM_STACKED_OBSERVATIONS = count
     NUM_CHANNELS = NUM_BASE_CHANNELS * count
     OBS_SIZE = (NUM_CHANNELS, b.width, b.height)

@@ -92,7 +92,7 @@ class GreedyMCTSTaflPlayer(BasePlayer):
 
     def play(self, state: GameState):
         self.evaluator.run(state, block=True)
-        print('[DEBUG] GreedyMCTS value:', self.evaluator.get_value())
+        #print('[DEBUG] GreedyMCTS value:', self.evaluator.get_value())
         return self.evaluator.get_best_actions()[0]
 
     def update(self, state: GameState, action: int) -> None:

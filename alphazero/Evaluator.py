@@ -340,11 +340,24 @@ class MCTSEvaluator(BaseEvaluator):
         self._mcts = None
         self._curr_num_sims = 0
 
+    def _init_mcts(self, state: GameState):
+        if self._mcts is None:
+            self._mcts = MCTS(
+                self.args.root_noise_frac,
+                self.args.root_policy_temp,
+                self.args.min_discount,
+                self.args.fpu_reduction,
+                self.args.cpuct,
+                state.num_players() + state.has_draw()
+            )
+
     def _search(self, state: GameState, model: Callable[[GameState], Tuple[np.ndarray, np.ndarray]],
                 sims: int = None, add_root_noise: bool = False, add_root_temp: bool = False):
         self._mcts.max_depth = 0
         num_sims = 0
         start_time = time.time()
+
+        self._init_mcts(state)
 
         while (num_sims < sims) if sims else True:
             if self._stop_event.is_set():
@@ -365,15 +378,8 @@ class MCTSEvaluator(BaseEvaluator):
             self._curr_num_sims = num_sims
 
     def _run(self, state: GameState, *args, **kwargs) -> None:
-        if self._mcts is None:
-            self._mcts = MCTS(
-                self.args.root_noise_frac,
-                self.args.root_policy_temp,
-                self.args.min_discount,
-                self.args.fpu_reduction,
-                self.args.cpuct,
-                state.num_players() + state.has_draw()
-            )
+        self._init_mcts(state)
+
         if self.model is None:
             # always use uniform value and policy if no model is given
             # v = np.zeros(state.num_players() + 1, dtype=np.float32)
@@ -386,6 +392,7 @@ class MCTSEvaluator(BaseEvaluator):
         super()._run(state)
 
     def update(self, state: GameState, action: int):
+        self._init_mcts(state)
         self._mcts.update_root(state, action)
         super().update(state, action)
 

@@ -88,7 +88,15 @@ cdef class Node:
     cdef Node best_child(self, float fpu_reduction, float cpuct):
         cdef Node c
         cdef float seen_policy = sum([c.p for c in self._children if c.n > 0])
-        cdef float fpu_value = self.v - fpu_reduction * sqrt(seen_policy)
+        cdef float parent_q = 0
+        cdef int parent_n = 0
+        cdef float fpu_value
+        for c in self._children:
+            parent_q += c.n * c.q
+            parent_n += c.n
+        if parent_n > 0:
+            parent_q /= parent_n
+        fpu_value = parent_q - fpu_reduction * sqrt(seen_policy)
         cdef float cur_best = -float('inf')
         cdef float sqrt_n = sqrt(self.n)
         cdef float uct

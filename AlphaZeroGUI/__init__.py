@@ -1,7 +1,7 @@
 from pathlib import Path
 
 PACKAGE_ROOT = Path('AlphaZeroGUI')
-ARGS_DIR = PACKAGE_ROOT / 'args'
+ARGS_DIR = Path('args')
 IMAGE_DIR = PACKAGE_ROOT / 'img'
 
 ALPHAZERO_ROOT = Path('alphazero')

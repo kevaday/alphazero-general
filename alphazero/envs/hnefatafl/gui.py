@@ -159,7 +159,7 @@ class GUI(CustomGUI):
         self.board.set_actions(self.evaluator.get_best_actions())
 
     def _tile_click(self, x, y):
-        print('[DEBUG] Tile clicked: {} {}'.format(x, y))
+        #print('[DEBUG] Tile clicked: {} {}'.format(x, y))
         if not self.user_input:
             self.board.clear_selection()
             return
@@ -181,7 +181,7 @@ class GUI(CustomGUI):
             return True
 
         def remove_selection():
-            print('[DEBUG] Removing selection')
+            #print('[DEBUG] Removing selection')
             self.board.clear_selection()
             self.board.remove_highlights()
             self.board.update()
@@ -190,16 +190,16 @@ class GUI(CustomGUI):
             from_square = Square(*self.board.last_selected_tile)
             to_square = Square(*self.board.selected_tile)
             move = (from_square, to_square)
-            print('[DEBUG] Move: {}'.format(move))
+            #print('[DEBUG] Move: {}'.format(move))
 
             if move in board.legal_moves(pieces=(from_square,)):
                 action = get_action(board, move)
-                print('[DEBUG] Move is legal, action: {}'.format(action))
+                #print('[DEBUG] Move is legal, action: {}'.format(action))
                 remove_selection()
                 self.on_player_move(action)
 
         elif self.board.selected_tile and highlight_legals(Square(*self.board.selected_tile)):
-            print('[DEBUG] Legals highlighted')
+            #print('[DEBUG] Legals highlighted')
             return
         else:
             remove_selection()

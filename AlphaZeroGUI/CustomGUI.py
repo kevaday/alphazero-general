@@ -29,7 +29,7 @@ def _update_board(func: Callable):
 
 class _EvalBarWidget(QtWidgets.QWidget):
     def __init__(self, width: int = 140, height: int = 20, parent: QtWidgets.QWidget = None,
-                 animation_speed: int = 50,
+                 animation_speed: int = 10,
                  background_colour: QtGui.QColor = QtCore.Qt.white,
                  foreground_colour: QtGui.QColor = QtCore.Qt.black,
                  font: QtGui.QFont = QtGui.QFont('Arial', 10)):
@@ -53,13 +53,15 @@ class _EvalBarWidget(QtWidgets.QWidget):
         self.set_value(EVAL_BAR_START_VALUE)
 
     def set_value(self, value: float):
+        value = max(0.0, min(1.0, float(value)))
         self._new_value = value if self.current_player == 0 else 1 - value
-        self._animation_timer.start()
+        if not self._animation_timer.isActive():
+            self._animation_timer.start()
         # print('[DEBUG] EvalBarWidget.set_value: {}'.format(self._new_value))
 
     def update_turn(self, player: int):
         self.current_player = player
-        print('[DEBUG] EvalBarWidget.update_turn: {}'.format(player))
+        #print('[DEBUG] EvalBarWidget.update_turn: {}'.format(player))
 
     def next_turn(self):
         self.update_turn(1 - self.current_player)
@@ -75,20 +77,26 @@ class _EvalBarWidget(QtWidgets.QWidget):
 
             if abs(self.value - self._new_value) < self.value_increment:
                 self.value = self._new_value
-                # if threading.current_thread() is threading.main_thread():
                 self._animation_timer.stop()
 
         elif self._animation_timer.isActive():
             self._animation_timer.stop()
-            # self.value = self._new_value
 
         super().update()
 
     def paintEvent(self, event: QtGui.QPaintEvent) -> None:
         painter = QtGui.QPainter(self)
+        value = max(0.0, min(1.0, self.value))
+
+        # Fill before drawing the outline so the endpoints remain aligned to
+        # the widget edges on platforms with fractional device scaling.
+        painter.fillRect(self.rect(), self.palette().brush(self.backgroundRole()))
+        fill_width = round(self.width() * value)
+        if fill_width:
+            painter.fillRect(QtCore.QRect(0, 0, fill_width, self.height()),
+                             QtGui.QBrush(self.foreground_colour))
         painter.setPen(QtGui.QPen(QtCore.Qt.black, 1, QtCore.Qt.SolidLine))
         painter.drawRect(0, 0, self.width() - 1, self.height() - 1)
-        painter.fillRect(0, 0, int(self.width() * self.value), self.height(), QtGui.QBrush(self.foreground_colour))
         painter.end()
 
 
@@ -110,7 +118,7 @@ class EvalBar(QtWidgets.QWidget):
         self._player1_label.setFont(self.font())
         self.layout.addWidget(self._player1_label)
 
-        self._bar = _EvalBarWidget(*args, parent=parent, font=font, **kwargs)
+        self._bar = _EvalBarWidget(*args, parent=self, font=font, **kwargs)
         self.layout.addWidget(self._bar)
 
         self._player2_label = QtWidgets.QLabel(players[1], self)

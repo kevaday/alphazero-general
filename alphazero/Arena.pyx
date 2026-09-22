@@ -47,11 +47,15 @@ class ArenaState(Enum):
 def _set_state(state: ArenaState):
     def decorator(func):
         def wrapper(self, *args, **kwargs):
-            if not hasattr(self, 'state') or self.state == ArenaState.STANDBY:
+            previous_state = getattr(self, 'state', ArenaState.STANDBY)
+            manages_state = previous_state == ArenaState.STANDBY
+            if manages_state:
                 self.state = state
-            ret = func(self, *args, **kwargs)
-            self.state = ArenaState.STANDBY
-            return ret
+            try:
+                return func(self, *args, **kwargs)
+            finally:
+                if manages_state:
+                    self.state = ArenaState.STANDBY
         return wrapper
     return decorator
 
@@ -306,9 +310,9 @@ class Arena:
 
                 self.games_played = size
                 self.eps_time = sample_time.avg
-                self.total_time = timedelta(seconds=bar.format_dict['elapsed'])
+                self.total_time = timedelta(seconds=round(bar.format_dict['elapsed']))
                 rate = bar.format_dict['rate']
-                self.eta = timedelta(seconds=(num - size) / rate) if rate else timedelta(0)
+                self.eta = timedelta(seconds=round((num - size) / rate)) if rate else timedelta(0)
 
             self.stop_event.set()
             bar.close()
@@ -358,20 +362,15 @@ class Arena:
                 self.__update_winrates()
                 eps_time.update(time.time() - end)
                 end = time.time()
-                elapsed = timedelta(seconds=bar.format_dict['elapsed'])
-                rate = bar.format_dict['rate']
-                eta = timedelta(seconds=(num - eps) / rate) if rate else timedelta(0)
-                bar.set_postfix_str('({eps}/{maxeps}) Winrates: {wr} | Eps Time: {et:.3f}s | Total: {total} | ETA: {eta}' \
-                    .format(
-                        eps=eps, maxeps=num, et=eps_time.avg, total=elapsed, eta=eta,
-                        wr=[round(w, 3) for w in self.winrates()]
-                    )
+                bar.set_postfix_str('Winrates: {wr} | Eps Time: {et:.3f}s'
+                    .format(wr=[round(w, 3) for w in self.winrates()], et=eps_time.avg)
                 )
                 bar.update(1)
                 self.games_played = eps
                 self.eps_time = eps_time.avg
-                self.total_time = elapsed
-                self.eta = eta
+                self.total_time = timedelta(seconds=round(bar.format_dict['elapsed']))
+                rate = bar.format_dict['rate']
+                self.eta = timedelta(seconds=round((num - eps) / rate)) if rate else timedelta(0)
 
             bar.close()
 

@@ -56,6 +56,13 @@ def const_temp_scaling(temp, *args, **kwargs) -> float:
     return temp
 
 
+def dropoff_temp_scaling(temp: float, turns: int, max_turns: int, dropoff_turns: int) -> float:
+    if turns >= dropoff_turns:
+        return 0.0
+    else:
+        return 1.0
+
+
 def get_game_results(result_queue, game_cls, _get_index=None, num_workers=None):
     wins = [0] * game_cls.num_players()
     draws = 0
