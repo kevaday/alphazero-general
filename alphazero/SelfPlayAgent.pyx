@@ -43,8 +43,8 @@ class SelfPlayAgent(mp.Process):
         self._is_arena = _is_arena
         self._is_warmup = _is_warmup
         if _is_arena:
-            self.player_to_index = list(range(game_cls.num_players()))
-            np.random.shuffle(self.player_to_index)
+            # Rotate player_to_index based on id to ensure different players are assigned to different agents
+            self.player_to_index = [(i + self.id) % game_cls.num_players() for i in range(game_cls.num_players())]
             self.batch_indices = None
         if _is_warmup:
             action_size = game_cls.action_size()
@@ -204,6 +204,7 @@ class SelfPlayAgent(mp.Process):
 
                     self.result_queue.put((self.games[i].clone(), winstate, self.id))
                     if not self._is_arena:
+                        game_samples = []
                         for hist in self.histories[i]:
                             self._check_pause()
                             if self.args.symmetricSamples:
@@ -213,9 +214,10 @@ class SelfPlayAgent(mp.Process):
 
                             for state, pi in data:
                                 self._check_pause()
-                                self.output_queue.put((
+                                game_samples.append((
                                     state.observation(), pi, np.array(winstate, dtype=np.float32)
                                 ))
+                        self.output_queue.put((winstate, game_samples))
 
                     self.games[i] = self.game_cls()
                     self.histories[i] = []

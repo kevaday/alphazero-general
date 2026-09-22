@@ -113,6 +113,7 @@ options.
 | `averageTrainSteps` | `False` | Base automatic training-step selection on the average history size instead of the latest size. |
 | `autoTrainSteps` | `True` | Automatically select training steps from the available samples. |
 | `symmetricSamples` | `True` | Add game-defined symmetric copies of self-play samples via `Game.symmetries`. |
+| `selfPlayDataBalance` | `0` | Maximum ratio of retained decisive games for any player to the least represented player. Set to `1` to retain equal numbers of wins for each player; `0` disables balancing. Draws are always retained and excluded from this calculation. |
 | `lr` | `0.01` | Initial learning rate. |
 | `optimizer` | `SGD` | PyTorch optimizer used for training. |
 | `optimizer_args` | `momentum=0.9`, `weight_decay=1e-4` | Keyword arguments passed to the optimizer. |

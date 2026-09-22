@@ -57,6 +57,9 @@ DEFAULT_ARGS = dotdict({
     'skipSelfPlayIters': None,
     'selfPlayModelIter': None,
     'symmetricSamples': True,
+    # Maximum ratio of samples retained for any decisive result to the least
+    # represented decisive result. Zero preserves all self-play games.
+    'selfPlayDataBalance': 0.0,
     'numMCTSSims': 100,
     'numFastSims': 20,
     'numWarmupSims': 5,
@@ -364,14 +367,44 @@ class Coach:
 
     @_set_state(TrainState.SAVE_SAMPLES)
     def saveIterationSamples(self, iteration):
-        samples = []
+        games = []
         completed_workers = 0
         while completed_workers < len(self.agents):
-            sample = self.file_queue.get()
-            if isinstance(sample, str) and sample == QUEUE_SENTINEL:
+            game = self.file_queue.get()
+            if isinstance(game, str) and game == QUEUE_SENTINEL:
                 completed_workers += 1
             else:
-                samples.append(sample)
+                games.append(game)
+
+        balance = getattr(self.args, 'selfPlayDataBalance', 0.0)
+        if balance:
+            if balance < 1:
+                raise ValueError('selfPlayDataBalance must be at least 1 or 0')
+
+            decisive_games = [[] for _ in range(self.game_cls.num_players())]
+            non_decisive_games = []
+            for winstate, samples in games:
+                winners = np.flatnonzero(winstate[:self.game_cls.num_players()])
+                if len(winners) == 1:
+                    decisive_games[winners[0]].append((winstate, samples))
+                else:
+                    # Draws are retained and deliberately excluded from balancing.
+                    non_decisive_games.append((winstate, samples))
+
+            represented = [len(player_games) for player_games in decisive_games if player_games]
+            if represented:
+                max_games = int(np.ceil(min(represented) * balance))
+                games = non_decisive_games + [
+                    game for player_games in decisive_games
+                    for game in (
+                        player_games if len(player_games) <= max_games
+                        else [player_games[index] for index in np.random.choice(
+                            len(player_games), max_games, replace=False
+                        )]
+                    )
+                ]
+
+        samples = [sample for _, game_samples in games for sample in game_samples]
 
         num_samples = len(samples)
         print(f'Saving {num_samples} samples')
