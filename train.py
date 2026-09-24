@@ -55,6 +55,8 @@ def _parser():
             kwargs['action'] = argparse.BooleanOptionalAction
         elif isinstance(default, (list, dict)):
             kwargs['type'] = json.loads
+        elif name in {'self_play_workers', 'train_workers', 'arena_workers'}:
+            kwargs['type'] = int
         else:
             kwargs['type'] = type(default) if default is not None else str
         parser.add_argument(option, **kwargs)

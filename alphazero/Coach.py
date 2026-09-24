@@ -29,6 +29,9 @@ DEFAULT_ARGS = dotdict({
     'run_name': 'boardgame',
     'cuda': torch.cuda.is_available(),
     'workers': mp.cpu_count(),
+    'self_play_workers': None,
+    'train_workers': None,
+    'arena_workers': None,
     'startIter': 0,
     'numIters': 1000,
     'process_batch_size': 256,
@@ -294,7 +297,8 @@ class Coach:
     def generateSelfPlayAgents(self):
         self.stop_agents = mp.Event()
         self.ready_queue = mp.Queue()
-        for i in range(self.args.workers):
+        worker_count = getattr(self.args, 'self_play_workers', None) or self.args.workers
+        for i in range(worker_count):
             self.input_tensors.append(torch.zeros(
                 [self.args.process_batch_size, *self.game_cls.observation_size()]
             ))
@@ -332,7 +336,8 @@ class Coach:
         end = time()
 
         n = 0
-        while self.completed.value != self.args.workers:
+        worker_count = getattr(self.args, 'self_play_workers', None) or self.args.workers
+        while self.completed.value != worker_count:
             if self.stop_train.is_set() and not self.stop_agents.is_set():
                 self.stop_agents.set()
 
@@ -519,7 +524,8 @@ class Coach:
         def train_data(tensor_dataset_list, train_on_all=False):
             dataset = ConcatDataset(tensor_dataset_list)
             dataloader = DataLoader(dataset, batch_size=self.args.train_batch_size, shuffle=True,
-                                    num_workers=self.args.workers, pin_memory=True)
+                                    num_workers=getattr(self.args, 'train_workers', None) or self.args.workers,
+                                    pin_memory=True)
             
             if self.args.averageTrainSteps:
                 nonlocal num_train_steps
