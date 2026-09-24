@@ -10,7 +10,8 @@ from alphazero.Game import GameState
 from torch.optim import *
 from torch.optim.lr_scheduler import *
 from alphazero.GenericPlayers import *
-from alphazero.utils import default_temp_scaling, const_temp_scaling
+from alphazero.utils import default_temp_scaling, const_temp_scaling, dropoff_temp_scaling
+from functools import partial
 
 import json
 import os

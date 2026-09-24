@@ -86,7 +86,10 @@ options.
 | --- | ---: | --- |
 | `run_name` | `boardgame` | Name used for checkpoints, training data, and TensorBoard logs. |
 | `cuda` | Auto-detected | Use CUDA when it is available. |
-| `workers` | CPU count | Number of worker processes used for self-play, arena games, and data loading. |
+| `workers` | CPU count | Legacy fallback number of worker processes used when a more specific worker setting is not provided. |
+| `self_play_workers` | `None` | Number of worker processes used for self-play; falls back to `workers`. |
+| `train_workers` | `None` | Number of worker processes used by the training data loader; falls back to `workers`. |
+| `arena_workers` | `None` | Number of worker processes used for batched Arena comparisons; falls back to `workers`. |
 | `startIter` | `0` | Iteration at which to start or resume training. |
 | `numIters` | `1000` | Final training iteration. |
 | `load_model` | `True` | Load the latest checkpoint for `run_name` when one exists. |

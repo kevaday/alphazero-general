@@ -5,7 +5,7 @@ from AlphaZeroGUI import ARGS_DIR, ENVS_DIR, PLAYERS_MODULE, GENERIC_PLAYERS_MOD
 from AlphaZeroGUI._gui import Ui_FormMainMenu, Ui_DialogEditArgs, Ui_DialogCombo
 from AlphaZeroGUI.CustomGUI import CustomGUI, MCTSEvaluator
 from alphazero.Coach import DEFAULT_ARGS, Coach, TrainState
-from alphazero.Arena import Arena, ArenaState
+from alphazero.Arena import ARENA_CANCELLED, Arena, ArenaState
 from alphazero.Game import GameState
 from alphazero.GenericPlayers import BasePlayer
 from alphazero.NNetWrapper import NNetWrapper
@@ -129,7 +129,8 @@ class _CustomGUIPlayerWrapper:
     def play(self, state: GameState) -> int:
         self.on_play_called(self, state)
         if self.is_human():
-            return self.__action_q.get()
+            action = self.__action_q.get()
+            return ARENA_CANCELLED if action is self.SENTINEL else action
         else:
             return self.player.play(state)
 
@@ -199,6 +200,7 @@ class MainWindow(Ui_FormMainMenu):
 
         self.custom_gui: CustomGUI = None
         self.custom_gui_action_queue = Queue()
+        self._active_gui_action_queue = None
 
         self.train_ended_counter = 0
         self.current_env_class: GameState = None
@@ -463,6 +465,8 @@ class MainWindow(Ui_FormMainMenu):
             self.set_pit_controls()
             return
 
+        self.custom_gui_action_queue = Queue()
+        self._active_gui_action_queue = self.custom_gui_action_queue
         self.pit_current_players = []
         for i, player in enumerate(self.pit_player_classes):
             args = [self.current_env_class, self.pit_args, self.checkConsoleVerbose.isChecked()]
@@ -564,8 +568,8 @@ class MainWindow(Ui_FormMainMenu):
         self.set_pit_controls()
         self.progressPit.setValue(0)
 
-        if self.custom_gui:
-            self.custom_gui_action_queue.put(_CustomGUIPlayerWrapper.SENTINEL)
+        if self.custom_gui and self._active_gui_action_queue:
+            self._active_gui_action_queue.put(_CustomGUIPlayerWrapper.SENTINEL)
             self.custom_gui.user_input = False
 
         try:
@@ -575,6 +579,7 @@ class MainWindow(Ui_FormMainMenu):
         self.update_stats()
         if self.custom_gui:
             self.custom_gui.update_state(self.arena.game_state)
+        self._active_gui_action_queue = None
         self.arena = None
 
         msgbox = QMessageBox(self)

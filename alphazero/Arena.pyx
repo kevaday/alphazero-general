@@ -17,6 +17,9 @@ from datetime import timedelta
 from tqdm import tqdm
 
 
+ARENA_CANCELLED = object()
+
+
 class _PlayerStats:
     def __init__(self, index):
         self.index = index
@@ -151,8 +154,9 @@ class Arena:
         """
         if verbose: assert self.display
 
-        self.stop_event = mp.Event()
-        self.pause_event = mp.Event()
+        if self.state == ArenaState.SINGLE_GAME:
+            self.stop_event = mp.Event()
+            self.pause_event = mp.Event()
 
         # Reset the state of the players if needed
         [p.reset() for p in self.players]
@@ -164,6 +168,9 @@ class Arena:
                 time.sleep(.1)
 
             action = self.players[player_to_index[self.game_state.player]](self.game_state)
+            if action is ARENA_CANCELLED:
+                self.stop_event.set()
+                break
             if self.stop_event.is_set() or not isinstance(action, int):
                 break
 
@@ -238,7 +245,8 @@ class Arena:
             # if self.args.workers >= mp.cpu_count():
             #    self.args.workers = mp.cpu_count() - 1
 
-            for i in range(self.args.workers):
+            worker_count = getattr(self.args, 'arena_workers', None) or self.args.workers
+            for i in range(worker_count):
                 input_tensors = [[] for _ in range(self.game_cls.num_players())]
                 batch_queues.append(mp.Queue())
 
@@ -267,7 +275,7 @@ class Arena:
             end = time.time()
 
             n = 0
-            while completed.value != self.args.workers:
+            while completed.value != worker_count:
                 try:
                     id = ready_queue.get(timeout=1)
 
