@@ -241,10 +241,6 @@ class Arena:
             completed = mp.Value('i', 0)
             games_played = mp.Value('i', 0)
 
-            # self.args.expertValueWeight.current = self.args.expertValueWeight.start
-            # if self.args.workers >= mp.cpu_count():
-            #    self.args.workers = mp.cpu_count() - 1
-
             worker_count = getattr(self.args, 'arena_workers', None) or self.args.workers
             for i in range(worker_count):
                 input_tensors = [[] for _ in range(self.game_cls.num_players())]
