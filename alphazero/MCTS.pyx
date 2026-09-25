@@ -9,6 +9,7 @@
 
 from libc.math cimport sqrt
 
+import cython
 import numpy as np
 cimport numpy as np
 
@@ -17,6 +18,7 @@ DTYPE = np.float32
 ctypedef np.float32_t DTYPE_t
 
 NOISE_ALPHA_RATIO = 10.83
+MIN_NOISE_ALPHA   = 0.1
 _DRAW_VALUE = 0.5
 
 np.seterr(all='raise')
@@ -82,25 +84,36 @@ cdef class Node:
         for c in self._children:
             c.p = pi[c.a]
 
-    cdef float uct(self, float sqrt_parent_n, float fpu_value, float cpuct):
-        return (fpu_value if self.n == 0 else self.q) + cpuct * self.p * sqrt_parent_n / (1 + self.n)
+    @cython.cdivision(True)
+    cdef inline float uct(self, float sqrt_parent_n, float fpu_value, float cpuct):
+        return (fpu_value if self.n == 0 else self.q) + cpuct * self.p * sqrt_parent_n / (1.0 + self.n)
 
     cdef Node best_child(self, float fpu_reduction, float cpuct):
         cdef Node c
-        cdef float seen_policy = sum([c.p for c in self._children if c.n > 0])
-        cdef float parent_q = 0
+        cdef float seen_policy = 0.0
+        cdef float parent_q = 0.0
         cdef int parent_n = 0
         cdef float fpu_value
+
         for c in self._children:
-            parent_q += c.n * c.q
-            parent_n += c.n
+            if c.n > 0:
+                seen_policy += c.p
+                parent_q += c.n * c.q
+                parent_n += c.n
+
         if parent_n > 0:
             parent_q /= parent_n
-        fpu_value = parent_q - fpu_reduction * sqrt(seen_policy)
+            fpu_value = parent_q - fpu_reduction * sqrt(seen_policy)
+            if fpu_value < 0.0:
+                fpu_value = 0.0
+        else:
+            # if no children visited use the parent's NN evaluation
+            fpu_value = self.v
+
         cdef float cur_best = -float('inf')
         cdef float sqrt_n = sqrt(self.n)
         cdef float uct
-        child = None
+        cdef Node child = None
 
         for c in self._children:
             uct = c.uct(sqrt_n, fpu_value, cpuct)
@@ -109,7 +122,6 @@ cdef class Node:
                 child = c
 
         return child
-
 
 """
 def rebuild_mcts(num_players, cpuct, root, curnode, path):
@@ -205,7 +217,7 @@ cdef class MCTS:
     cpdef void _add_root_noise(self):
         cdef int num_valid_moves = len(self._root._children)
         cdef float[:] noise = np.array(np.random.dirichlet(
-            [NOISE_ALPHA_RATIO / num_valid_moves] * num_valid_moves
+            [max(NOISE_ALPHA_RATIO / num_valid_moves, MIN_NOISE_ALPHA)] * num_valid_moves
         ), dtype=np.float32)
         cdef Node c
         cdef float n
@@ -269,30 +281,26 @@ cdef class MCTS:
         cdef Py_ssize_t num_players = gs.num_players()
         cdef Node parent
         cdef float v
-        cdef float discount
+        cdef float discounted_v
+        cdef float curr_discount = 1.0
+        cdef float step_decay = self.min_discount ** (1.0 / self._discount_max_depth)
         cdef int i = 0
+
+        if self._curnode.n == 0:
+            self._curnode.v = self._get_value(value, self._curnode.player, num_players)
+
         while self._path:
             parent = self._path.pop()
             v = self._get_value(value, parent.player, num_players)
 
-            # apply discount only to current node's Q value
-            discount = (self.min_discount ** (i / self._discount_max_depth))
-            if v < _DRAW_VALUE:
-                # (1 - discount) + 1 to invert it because bad values far away
-                # are better than bad values close to root
-                discount = 2 - discount
-            elif v == _DRAW_VALUE:
-                # don't discount value in the rare case that it is a precise draw (0.5)
-                discount = 1
+            # pull the value towards the draw value based on discount factor
+            discounted_v = _DRAW_VALUE + (v - _DRAW_VALUE) * curr_discount
 
-            # scale value to the range [-1, 1]
-            # v = 2 * v * discount - 1
-
-            self._curnode.q = (self._curnode.q * self._curnode.n + v * discount) / (self._curnode.n + 1)
-            if self._curnode.n == 0:
-                self._curnode.v = self._get_value(value, self._curnode.player, num_players)  # * 2 - 1
+            self._curnode.q = (self._curnode.q * self._curnode.n + discounted_v) / (self._curnode.n + 1)
             self._curnode.n += 1
             self._curnode = parent
+
+            curr_discount *= step_decay
             i += 1
 
         self._root.n += 1
